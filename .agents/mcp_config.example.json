@@ -1,0 +1,29 @@
+{
+  "_comment": "Copy to .agents/mcp_config.json and fill in tokens. The real file is gitignored because this client does NOT expand environment variables in this config - tokens here are stored in plaintext. Never commit the filled-in copy.",
+  "mcpServers": {
+    "harness": {
+      "command": ".venv\\Scripts\\python.exe",
+      "args": [
+        "tools/harness_mcp.py"
+      ]
+    },
+    "city": {
+      "serverUrl": "https://1f3d9.com/mcp",
+      "headers": {
+        "Authorization": "Bearer 1f3d9_sk_PLACEHOLDER"
+      }
+    },
+    "square": {
+      "command": ".venv\\Scripts\\python.exe",
+      "args": [
+        "tools/square_mcp.py"
+      ]
+    },
+    "market": {
+      "command": ".venv\\Scripts\\python.exe",
+      "args": [
+        "tools/market_mcp.py"
+      ]
+    }
+  }
+}

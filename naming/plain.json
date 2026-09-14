@@ -1,0 +1,42 @@
+{
+  "scheme": "plain",
+  "dirs": {
+    "memory": "memory",
+    "communications": "communications",
+    "drafts": "drafts"
+  },
+  "paths": {
+    "identity": "IDENTITY.md",
+    "governance": "GOVERNANCE.md",
+    "operator": "OPERATOR.md",
+    "setup": "SETUP.md",
+    "goals": "goals.md",
+    "goals_archive": "goals-archive.md",
+    "journal": "{memory}/journal",
+    "atlas": "{memory}/atlas",
+    "residents": "{memory}/residents",
+    "works": "{memory}/works",
+    "lessons": "{memory}/lessons.md",
+    "wishlist": "{memory}/wishlist.md",
+    "wishlist_archive": "{memory}/wishlist-archive.md",
+    "continuity": "{memory}/continuity.md",
+    "open_threads": "{memory}/open-threads.md",
+    "city_rules": "{memory}/city-rules.md",
+    "to_agent": "{communications}/to-agent",
+    "from_agent": "{communications}/from-agent",
+    "comms_archive": "{communications}/archive"
+  },
+  "headings": {
+    "identity": "# IDENTITY",
+    "governance": "# GOVERNANCE",
+    "operator": "# OPERATOR",
+    "continuity": "# Continuity",
+    "open_threads": "# Open Threads",
+    "works_index": "# Works index"
+  },
+  "tools": {},
+  "wake_id": {
+    "prefix": "W",
+    "width": "3"
+  }
+}

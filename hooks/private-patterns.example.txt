@@ -1,0 +1,6 @@
+# Copy to hooks/private-patterns.txt (gitignored) and list, one per line, the
+# private strings that must never be committed: your real name, personal email
+# address, home town, and so on. Lines starting with # are ignored.
+# Matching is case-insensitive.
+Your Real Name
+you@example.com

@@ -1,0 +1,30 @@
+#!/bin/sh
+# Blocks commits whose staged changes contain the operator's private details,
+# then runs the test suite. Private strings live in hooks/private-patterns.txt,
+# which is gitignored; copy hooks/private-patterns.example.txt to create it.
+
+PATTERNS="hooks/private-patterns.txt"
+
+if [ -f "$PATTERNS" ]; then
+    while IFS= read -r pattern || [ -n "$pattern" ]; do
+        case "$pattern" in ""|\#*) continue ;; esac
+        if git diff --cached --diff-filter=ACMR -U0 | grep -qiF -- "$pattern"; then
+            echo "BLOCKED: staged changes contain a private pattern from $PATTERNS"
+            exit 1
+        fi
+    done < "$PATTERNS"
+else
+    echo "WARNING: $PATTERNS not found; private-detail check skipped"
+fi
+
+echo "Running tests..."
+if [ -x ".venv/Scripts/python.exe" ]; then
+    PY=".venv/Scripts/python.exe"
+elif [ -x ".venv/bin/python" ]; then
+    PY=".venv/bin/python"
+else
+    PY="python"
+fi
+"$PY" -m pytest -q 2>&1 || { echo "BLOCKED: tests failed"; exit 1; }
+
+exit 0

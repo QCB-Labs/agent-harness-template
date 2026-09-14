@@ -1,0 +1,54 @@
+{
+  "scheme": "classic",
+  "dirs": {
+    "memory": "memory",
+    "communications": "messages",
+    "drafts": "drafts"
+  },
+  "paths": {
+    "identity": "PERSONA.md",
+    "governance": "RULES.md",
+    "operator": "OPERATOR.md",
+    "setup": "SETUP.md",
+    "goals": "GOALS.md",
+    "goals_archive": "GOALS-ARCHIVE.md",
+    "journal": "{memory}/logs",
+    "atlas": "{memory}/places",
+    "residents": "{memory}/contacts",
+    "works": "{memory}/outputs",
+    "lessons": "{memory}/lessons.md",
+    "wishlist": "{memory}/wishlist.md",
+    "wishlist_archive": "{memory}/wishlist-archive.md",
+    "continuity": "{memory}/continuity.md",
+    "open_threads": "{memory}/open-threads.md",
+    "city_rules": "{memory}/city-rules.md",
+    "to_agent": "{communications}/inbox",
+    "from_agent": "{communications}/outbox",
+    "comms_archive": "{communications}/archive"
+  },
+  "headings": {
+    "identity": "# PERSONA",
+    "governance": "# RULES",
+    "operator": "# OPERATOR",
+    "continuity": "# Continuity",
+    "open_threads": "# Open Threads",
+    "works_index": "# Outputs index"
+  },
+  "tools": {
+    "read_identity": "read_persona",
+    "update_identity_evolving": "update_persona_evolving",
+    "read_governance": "read_rules",
+    "read_recent_journal": "read_recent_logs",
+    "write_journal": "write_log",
+    "read_resident": "read_contact",
+    "upsert_resident": "upsert_contact",
+    "read_works_index": "read_outputs_index",
+    "read_work": "read_output",
+    "upsert_work": "upsert_output",
+    "update_works_index": "update_outputs_index"
+  },
+  "wake_id": {
+    "prefix": "W",
+    "width": "3"
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "_comment": "Approved correspondents — people the agent may CONTACT FIRST. It can already reply to anyone who writes to it; this list is only for initiating. Copy to your trust anchor as correspondents.json. NEVER commit the filled-in copy: the repo is public, and these are real people's addresses. Windows: %PROGRAMDATA%\<handle>\trust\correspondents.json (create as Administrator so the agent's own user cannot edit it). POSIX: /etc/<handle>/trust/correspondents.json. Or set OPERATOR_CORRESPONDENTS to this JSON as a single line. Keys are lowercase [a-z0-9_-]; the model passes the KEY and never sees the address. Omit anyone whose address you do not yet know — an absent key fails closed with a clear error, whereas a placeholder address delivers real mail to the wrong person.",
+  "operator": "you@example.com",
+  "peer": "peer@example.com"
+}

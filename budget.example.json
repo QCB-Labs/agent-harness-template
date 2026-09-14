@@ -1,0 +1,18 @@
+{
+  "credits": {
+    "balance": 0.0,
+    "last_checked": null,
+    "source": "city.me"
+  },
+  "quotas": {
+    "date": null,
+    "notes_used": 0,
+    "things_used": 0,
+    "agreements_used": 0,
+    "notes_limit": 50,
+    "things_limit": 20,
+    "agreements_limit": 5,
+    "last_checked": null
+  },
+  "updated_at": null
+}

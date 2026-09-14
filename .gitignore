@@ -1,0 +1,81 @@
+# Live credentials
+secrets.py
+tools/secrets.py
+# Any secrets variant (secrets2.py, secrets-old.py, a Save As copy) holds the
+# same tokens as the real file and must never be published. Only the
+# example template, which contains placeholders, stays tracked.
+secrets*.py
+tools/secrets*.py
+# Literal security canary bait; keep explicit even though the wildcard matches.
+tools/secrets_backup.py
+!secrets.example.py
+!tools/secrets.example.py
+.env
+.env.*
+!.env.example
+
+# Operator-specific wallet setup (use WALLET-SETUP.example.md as template)
+WALLET-SETUP.md
+
+# Python-generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local credential-bearing configuration
+wallet-config.json
+gemini.local.json
+.gemini/settings.json
+
+# Temporary and backup files
+*.tmp
+*.bak
+*.bak_ids
+_UNRECORDED-*.md
+
+# Client workspace MCP config — holds the city bearer token in plaintext
+# (the client does not expand env vars). Use .agents/mcp_config.example.json.
+.agents/mcp_config.json
+
+# Private agent enclave & scratchpad (cryptographic keys, telemetry buffers)
+records/private/
+records/acquired/
+records/acquired-index.json
+
+# Private operator-agent communications
+memos/incoming/
+memos/outgoing/
+
+# --- Information release boundary ---
+# Private context: not published, and not loaded into the agent's context until
+# after replies to unknown senders have been sent. The harness derives its
+# private set from THIS FILE (tools/release.py) — do not duplicate the list.
+
+# Unpublished thought — a draft is not a dispatch. submit_for_approval and
+# archive_submission recreate these directories on demand.
+pending-approval/
+
+# Replay-prevention state (used-nonce ledger)
+records/replay/
+
+# The agent's own record of mail
+records/correspondence/
+
+# Signed operator command drops (ephemeral)
+operator/
+
+# Wake phase state (records/private/ is already ignored; explicit for clarity)
+records/private/wake_phase.json
+
+# Operator private key — never commit
+operator_private.pem
+
+# Operator private details checked by the commit hooks — never commit
+hooks/private-patterns.txt

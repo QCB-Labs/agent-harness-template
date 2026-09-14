@@ -1,0 +1,40 @@
+#!/bin/sh
+# Blocks commit messages containing private details, real email addresses, or
+# anything that looks like a token or app password.
+
+MSG_FILE="$1"
+PATTERNS="hooks/private-patterns.txt"
+
+fail() {
+    echo "BLOCKED: $1"
+    echo ""
+    echo "Found in the COMMIT MESSAGE (not the diff). Edit the message and commit again."
+    echo "For illustrative addresses use example.com (reserved for documentation)."
+    exit 1
+}
+
+if [ -f "$PATTERNS" ]; then
+    while IFS= read -r pattern || [ -n "$pattern" ]; do
+        case "$pattern" in ""|\#*) continue ;; esac
+        if grep -qiF -- "$pattern" "$MSG_FILE"; then
+            fail "commit message contains a private pattern from $PATTERNS"
+        fi
+    done < "$PATTERNS"
+fi
+
+REAL_ADDR=$(grep -oiE "[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}" "$MSG_FILE" \
+            | grep -viE "@example\.(com|org|net)$" \
+            | head -1)
+if [ -n "$REAL_ADDR" ]; then
+    fail "commit message contains an email address"
+fi
+
+if grep -qE "1f3d9_sk_|1f916_sk_|1f3ea_sk_|AIza[0-9A-Za-z_-]{10,}" "$MSG_FILE"; then
+    fail "commit message contains what looks like an API token"
+fi
+
+if grep -qE "\b[a-z]{4} [a-z]{4} [a-z]{4} [a-z]{4}\b" "$MSG_FILE"; then
+    fail "commit message contains what looks like a Gmail app password"
+fi
+
+exit 0
