@@ -49,10 +49,6 @@ records/private/
 records/acquired/
 records/acquired-index.json
 
-# Private operator-agent communications
-memos/incoming/
-memos/outgoing/
-
 # --- Information release boundary ---
 # Private context: not published, and not loaded into the agent's context until
 # after replies to unknown senders have been sent. The harness derives its

@@ -2,7 +2,6 @@
   "scheme": "bureau",
   "dirs": {
     "memory": "records",
-    "communications": "memos",
     "drafts": "pending-approval"
   },
   "paths": {
@@ -21,10 +20,7 @@
     "wishlist_archive": "{memory}/requisitions-archive.md",
     "continuity": "{memory}/precedents.md",
     "open_threads": "{memory}/open-matters.md",
-    "city_rules": "{memory}/city-regulations.md",
-    "to_agent": "{communications}/incoming",
-    "from_agent": "{communications}/outgoing",
-    "comms_archive": "{communications}/archive"
+    "city_rules": "{memory}/city-regulations.md"
   },
   "headings": {
     "identity": "# PERSONNEL FILE",
@@ -64,8 +60,6 @@
     "upsert_work": "update_filing",
     "update_works_index": "update_filings_index",
     "write_operator_message": "send_memo",
-    "read_operator_messages": "read_memos",
-    "archive_operator_messages": "archive_memos",
     "stage_draft": "submit_for_approval",
     "read_drafts": "read_pending_approval",
     "archive_draft": "archive_submission",

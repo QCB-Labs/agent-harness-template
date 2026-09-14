@@ -23,7 +23,6 @@ NAMING_PATH = REPO_ROOT / "naming.json"
 PLAIN: dict[str, dict[str, str]] = {
     "dirs": {
         "memory": "memory",
-        "communications": "communications",
         "drafts": "drafts",
     },
     "paths": {
@@ -43,9 +42,6 @@ PLAIN: dict[str, dict[str, str]] = {
         "continuity": "{memory}/continuity.md",
         "open_threads": "{memory}/open-threads.md",
         "city_rules": "{memory}/city-rules.md",
-        "to_agent": "{communications}/to-agent",
-        "from_agent": "{communications}/from-agent",
-        "comms_archive": "{communications}/archive",
     },
     "headings": {
         "identity": "# IDENTITY",
@@ -79,7 +75,7 @@ def scheme() -> str:
 
 
 def dir_name(key: str) -> str:
-    """A top-level folder: memory, communications, drafts."""
+    """A top-level folder: memory or drafts."""
     return load()["dirs"][key]
 
 

@@ -72,7 +72,7 @@ def test_switch_moves_files_and_records_the_scheme(copy: Path) -> None:
     scheme = rename_scheme.load_scheme(copy / "naming" / f"{target}.json")
     assert switch(copy, target) == 0
     assert current_scheme(copy) == target
-    for key in ("identity", "governance", "journal", "to_agent"):
+    for key in ("identity", "governance", "journal", "atlas"):
         assert (copy / rename_scheme.rel(scheme, key)).exists(), key
 
 

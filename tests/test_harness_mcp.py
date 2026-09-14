@@ -21,16 +21,8 @@ def _private_call(tool, *args, **kwargs):
     return tool(*args, **kwargs)
 
 
-def _read_operator_messages(*args, **kwargs):
-    return _private_call(harness_mcp.read_operator_messages, *args, **kwargs)
-
-
 def _write_operator_message(*args, **kwargs):
     return _private_call(harness_mcp.write_operator_message, *args, **kwargs)
-
-
-def _archive_operator_messages(*args, **kwargs):
-    return _private_call(harness_mcp.archive_operator_messages, *args, **kwargs)
 
 
 def _stage_draft(*args, **kwargs):
@@ -173,34 +165,6 @@ def test_read_recent_journal_finds_entries_in_monthly_subfolders(
     result = harness_mcp.read_recent_journal(n=2)
     assert "aug entry" in result
     assert "sep entry" in result
-
-
-def test_read_operator_messages_formats_sorts_and_filters(
-    isolated_repo: Path,
-) -> None:
-    inbox = isolated_repo / names.rel("to_agent")
-    inbox.mkdir(parents=True)
-    (inbox / "2026-09-02-second.md").write_text("second message", encoding="utf-8")
-    (inbox / "2026-09-01-first.md").write_text("first message 🚀", encoding="utf-8")
-    (inbox / "README.md").write_text("inbox instructions", encoding="utf-8")
-    (inbox / "ignored.txt").write_text("not a message", encoding="utf-8")
-
-    assert _read_operator_messages() == (
-        "**2026-09-01-first.md**\n\nfirst message 🚀"
-        "\n\n---\n\n"
-        "**2026-09-02-second.md**\n\nsecond message"
-    )
-
-
-@pytest.mark.parametrize("create_directory", [False, True])
-def test_read_operator_messages_handles_empty_inbox(
-    isolated_repo: Path,
-    create_directory: bool,
-) -> None:
-    if create_directory:
-        (isolated_repo / names.rel("to_agent")).mkdir(parents=True)
-
-    assert _read_operator_messages() == "(no operator messages)"
 
 
 def test_read_budget_returns_parsed_json(isolated_repo: Path) -> None:
@@ -907,144 +871,6 @@ def test_propose_city_rule_preserves_prior_proposals(
     assert text.index("Second proposal") < text.index("First proposal")
 
 
-def test_write_operator_message_creates_timestamped_message(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-
-    filename = _write_operator_message("Operator update. 🚀")
-
-    assert filename == "2026-09-01-123456-from-agent.md"
-    message = isolated_repo / names.rel("from_agent") / filename
-    assert message.read_bytes() == (
-        b"# 2026-09-01-123456\n\nOperator update. "
-        + "🚀".encode("utf-8")
-        + b"\n"
-    )
-
-
-def test_write_operator_message_dispatches_email(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-    sent: list[tuple[str, str]] = []
-    monkeypatch.setattr(harness_mcp, "_send_email", lambda s, b: sent.append((s, b)) or True)
-
-    filename = _write_operator_message("Operator update. 🚀")
-    assert filename == "2026-09-01-123456-from-agent.md"
-    assert len(sent) == 1
-    assert sent[0][0] == "[Agent] Operator Message: 2026-09-01-123456"
-    assert "Operator update. 🚀" in sent[0][1]
-
-    # When dispatch_email=False, no email should be sent
-    sent.clear()
-    filename2 = _write_operator_message("Silent update", dispatch_email=False)
-    assert filename2 == "2026-09-01-123456-from-agent-b.md"
-    assert len(sent) == 0
-
-
-def test_write_operator_message_never_overwrites_existing_message(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-    outbox = isolated_repo / names.rel("from_agent")
-    outbox.mkdir(parents=True)
-    existing = outbox / "2026-09-01-123456-from-agent.md"
-    existing.write_text("existing message", encoding="utf-8")
-
-    # Exclusive creation is preserved: the existing file is never overwritten.
-    # It now sidesteps onto a suffixed name rather than raising, so a
-    # same-second second message (a spending request, a crash alert) is
-    # recorded instead of lost. See review note, session 26.
-    filename = _write_operator_message("replacement")
-
-    assert filename == "2026-09-01-123456-from-agent-b.md"
-    assert existing.read_text(encoding="utf-8") == "existing message"
-    assert (outbox / filename).read_text(encoding="utf-8").endswith("replacement\n")
-
-
-def test_archive_operator_messages_moves_messages_and_preserves_current(
-    isolated_repo: Path,
-) -> None:
-    communications = isolated_repo / names.dir_name("communications")
-    outbox = isolated_repo / names.rel("from_agent")
-    inbox = isolated_repo / names.rel("to_agent")
-    outbox.mkdir(parents=True)
-    inbox.mkdir(parents=True)
-    fixtures = {
-        outbox / "old.md": "old outgoing",
-        outbox / "already-from-agent.md": "tagged outgoing",
-        outbox / "current-from-agent.md": "current outgoing",
-        inbox / "incoming.md": "incoming message",
-        inbox / "already-to-agent.md": "tagged incoming",
-        outbox / "README.md": "outbox instructions",
-        inbox / "README.md": "inbox instructions",
-    }
-    for path, content in fixtures.items():
-        path.write_text(content, encoding="utf-8")
-
-    result = _archive_operator_messages("current-from-agent.md")
-
-    assert result == [
-        "already-from-agent.md",
-        "old-from-agent.md",
-        "already-to-agent.md",
-        "incoming-to-agent.md",
-    ]
-    archive = isolated_repo / names.rel("comms_archive")
-    assert (archive / "old-from-agent.md").read_text(encoding="utf-8") == (
-        "old outgoing"
-    )
-    assert (archive / "already-from-agent.md").read_text(encoding="utf-8") == (
-        "tagged outgoing"
-    )
-    assert (archive / "incoming-to-agent.md").read_text(encoding="utf-8") == (
-        "incoming message"
-    )
-    assert (archive / "already-to-agent.md").read_text(encoding="utf-8") == (
-        "tagged incoming"
-    )
-    assert (outbox / "current-from-agent.md").read_text(encoding="utf-8") == (
-        "current outgoing"
-    )
-    assert (outbox / "README.md").exists()
-    assert (inbox / "README.md").exists()
-
-
-def test_archive_operator_messages_handles_missing_or_empty_sources(
-    isolated_repo: Path,
-) -> None:
-    assert _archive_operator_messages() == "(nothing to archive)"
-    assert (isolated_repo / names.rel("comms_archive")).is_dir()
-
-
-def test_archive_operator_messages_preflights_collision_without_moving(
-    isolated_repo: Path,
-) -> None:
-    communications = isolated_repo / names.dir_name("communications")
-    inbox = isolated_repo / names.rel("to_agent")
-    archive = isolated_repo / names.rel("comms_archive")
-    inbox.mkdir(parents=True)
-    archive.mkdir(parents=True)
-    first = inbox / "first.md"
-    second = inbox / "second.md"
-    first.write_text("first source", encoding="utf-8")
-    second.write_text("second source", encoding="utf-8")
-    existing = archive / "second-to-agent.md"
-    existing.write_text("existing archive", encoding="utf-8")
-
-    with pytest.raises(FileExistsError, match="second-to-agent.md"):
-        _archive_operator_messages()
-
-    assert first.read_text(encoding="utf-8") == "first source"
-    assert second.read_text(encoding="utf-8") == "second source"
-    assert existing.read_text(encoding="utf-8") == "existing archive"
-    assert not (archive / "first-to-agent.md").exists()
-
-
 def test_read_wallet_config_returns_parsed_json_without_changes(
     isolated_repo: Path,
 ) -> None:
@@ -1086,7 +912,6 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
         names.tool("read_recent_journal"),
-        names.tool("read_operator_messages"),
         names.tool("wake_status"),
         names.tool("check_inbox"),
         names.tool("reply_to_message"),
@@ -1108,7 +933,6 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
         names.tool("append_wishlist"),
         names.tool("propose_city_rule"),
         names.tool("write_operator_message"),
-        names.tool("archive_operator_messages"),
         names.tool("read_wallet_config"),
         names.tool("authorise_spend"),
         names.tool("read_map"),
@@ -1140,8 +964,8 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
     by_name = {tool.name: tool for tool in tools}
     identity_bound = {
         "check_inbox", "reply_to_message", "wake_status",
-        "read_operator_messages", "read_correspondence",
-        "write_operator_message", "archive_operator_messages",
+        "read_correspondence",
+        "write_operator_message",
         "stage_draft", "read_drafts", "archive_draft",
     }
     for name in identity_bound:
@@ -1164,7 +988,6 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
         names.tool("read_recent_journal"),
-        names.tool("read_operator_messages"),
         names.tool("wake_status"),
         names.tool("check_inbox"),
         names.tool("reply_to_message"),
@@ -1186,7 +1009,6 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
         names.tool("append_wishlist"),
         names.tool("propose_city_rule"),
         names.tool("write_operator_message"),
-        names.tool("archive_operator_messages"),
         names.tool("read_wallet_config"),
         names.tool("authorise_spend"),
         names.tool("read_map"),
@@ -1237,12 +1059,6 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     journal_dir = tmp_path / names.rel("journal")
     journal_dir.mkdir(parents=True)
     (journal_dir / "2026-09-01.md").write_text("protocol journal", encoding="utf-8")
-    inbox = tmp_path / names.rel("to_agent")
-    inbox.mkdir(parents=True)
-    (inbox / "message.md").write_text("protocol message", encoding="utf-8")
-    outbox = tmp_path / names.rel("from_agent")
-    outbox.mkdir(parents=True)
-    (outbox / "old.md").write_text("old protocol outgoing", encoding="utf-8")
     budget = {"month": "2026-09", "wake_count": 7}
     (tmp_path / "budget.json").write_text(json.dumps(budget), encoding="utf-8")
     wallet_config = {"pay_armed": False, "monthly_cap_usd": 5.0}
@@ -1266,8 +1082,7 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
             tools = await session.list_tools()
             soul_result = await session.call_tool(names.tool("read_identity"))
             journal_result = await session.call_tool(names.tool("read_recent_journal"), {"n": 1})
-            messages_result = await session.call_tool(names.tool("read_operator_messages"), {"_conversationId": CONVERSATION_ID}
-            )
+            await session.call_tool(names.tool("read_correspondence"), {"_conversationId": CONVERSATION_ID})
             wake_status_result = await session.call_tool(names.tool("wake_status"), {"_conversationId": CONVERSATION_ID}
             )
             inbox_result = await session.call_tool(names.tool("check_inbox"), {"_conversationId": CONVERSATION_ID}
@@ -1305,19 +1120,11 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
                     "_conversationId": CONVERSATION_ID,
                 }
             )
-            current_filename = operator_message.content[0].text
-            archived_messages = await session.call_tool(names.tool("archive_operator_messages"),
-                {
-                    "current_message_filename": current_filename,
-                    "_conversationId": CONVERSATION_ID,
-                },
-            )
             wallet_result = await session.call_tool(names.tool("read_wallet_config"))
 
     assert [tool.name for tool in tools.tools] == expected_tools
     assert soul_result.content[0].text == expected
     assert journal_result.content[0].text == "protocol journal"
-    assert messages_result.content[0].text == "**message.md**\n\nprotocol message"
     assert wake_status_result.isError is False
     assert "Unknown email: BLOCKED" in wake_status_result.content[0].text
     assert inbox_result.isError is False
@@ -1335,11 +1142,8 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     assert lesson_update.content[0].text == f"{Path(names.rel('lessons')).name} updated"
     assert wishlist_update.content[0].text == f"{Path(names.rel('wishlist')).name} updated"
     assert rule_update.content[0].text == f"{Path(names.rel('city_rules')).name} proposal added"
-    assert current_filename.endswith("-from-agent.md")
-    assert [item.text for item in archived_messages.content] == [
-        "old-from-agent.md",
-        "message-to-agent.md",
-    ]
+    sent = json.loads(operator_message.content[0].text)
+    assert sent["message"] == "Current protocol message"
     assert json.loads(wallet_result.content[0].text) == wallet_config
 
     written_entries = [
@@ -1370,18 +1174,6 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     assert rules_text.index("Protocol proposed mechanic") < rules_text.index(
         "Existing proposal"
     )
-    communications = tmp_path / names.dir_name("communications")
-    assert (tmp_path / names.rel("from_agent") / current_filename).read_text(
-        encoding="utf-8"
-    ).endswith("Current protocol message\n")
-    assert not (communications.parent / names.rel("from_agent") / "old.md").exists()
-    assert not (communications.parent / names.rel("to_agent") / "message.md").exists()
-    assert (communications.parent / names.rel("comms_archive") / "old-from-agent.md").read_text(
-        encoding="utf-8"
-    ) == "old protocol outgoing"
-    assert (communications.parent / names.rel("comms_archive") / "message-to-agent.md").read_text(
-        encoding="utf-8"
-    ) == "protocol message"
 
 
 # ---------------------------------------------------------------------------
@@ -1418,33 +1210,6 @@ def _write_wallet(repo: Path, armed: bool) -> dict[str, object]:
 def _unlock(monkeypatch: pytest.MonkeyPatch, active: bool = True) -> None:
     """Simulate an admin session without touching real keys."""
     monkeypatch.setattr(harness_mcp, "session_active", lambda *a, **k: active)
-
-
-def test_spend_refuses_when_disarmed_and_records_request(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    no_email: list[tuple[str, str]],
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-    _write_wallet(isolated_repo, armed=False)
-    _unlock(monkeypatch)
-
-    result = harness_mcp.authorise_spend(
-        "invent_kind", "telemetry-beacon: a beacon that reports drift"
-    )
-
-    assert result["status"] == "REFUSED"
-    assert result["emailed"] is True
-    assert result["operator_message"] == f"{STAMP}-from-agent.md"
-    message = (
-        isolated_repo / names.rel("from_agent") / str(result["operator_message"])
-    ).read_text(encoding="utf-8")
-    assert "SPENDING REQUEST" in message
-    assert "invent_kind" in message
-    assert "telemetry-beacon" in message
-    subject, body = no_email[0]
-    assert subject == "[Agent] Spending request: invent_kind"
-    assert "SPENDING REQUEST" in body
 
 
 @pytest.mark.parametrize(
@@ -1526,9 +1291,6 @@ def test_spend_passes_with_session_and_issues_a_logged_request_id(
     assert ledger["issued"][-1]["city_credit_request_id"] == request_id
     assert ledger["issued"][-1]["action"] == "rename_place"
     assert no_email == []
-    assert not list(
-        (isolated_repo / names.dir_name("communications")).glob("**/*.md")
-    ), "a passed gate must not write an operator message"
     assert json.loads(
         (isolated_repo / "wallet-config.json").read_text(encoding="utf-8")
     ) == config, "the gate must never write pay_armed"
@@ -1595,114 +1357,6 @@ def test_spend_never_arms_the_gate_itself(
     assert json.loads(
         (isolated_repo / "wallet-config.json").read_text(encoding="utf-8")
     ) == config
-
-
-def test_spend_still_refuses_when_message_write_fails(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    no_email: list[tuple[str, str]],
-) -> None:
-    _write_wallet(isolated_repo, armed=False)
-
-    def boom(content: str, dispatch_email: bool = True) -> str:
-        raise OSError("disk full")
-
-    monkeypatch.setattr(harness_mcp, "_write_operator_message", boom)
-
-    result = harness_mcp.authorise_spend("invent_kind", "k")
-
-    assert result["status"] == "REFUSED"
-    assert result["operator_message"] is None
-    assert result["emailed"] is True
-
-
-def test_spend_refusal_survives_same_second_repeat(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    no_email: list[tuple[str, str]],
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-    _write_wallet(isolated_repo, armed=False)
-
-    first = harness_mcp.authorise_spend("invent_kind", "k")
-    second = harness_mcp.authorise_spend("invent_kind", "k")
-
-    assert first["status"] == second["status"] == "REFUSED"
-    assert first["operator_message"] == f"{STAMP}-from-agent.md"
-    assert second["operator_message"] == f"{STAMP}-from-agent-b.md"
-    outbox = isolated_repo / names.rel("from_agent")
-    assert len(list(outbox.glob("*.md"))) == 2
-
-
-def test_notify_crash_writes_report_and_emails(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    no_email: list[tuple[str, str]],
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-
-    result = harness_mcp.notify_crash("City returned 503 three times in a row.")
-
-    assert result == {"crash_file": f"_CRASH-{STAMP}.md", "emailed": True}
-    report = (
-        isolated_repo / names.rel("from_agent") / f"_CRASH-{STAMP}.md"
-    ).read_text(encoding="utf-8")
-    assert report == (
-        f"# CRASH REPORT {STAMP}\n\nCity returned 503 three times in a row.\n"
-    )
-    subject, body = no_email[0]
-    assert subject.startswith("[Agent] CRASH: City returned 503")
-    assert body == "City returned 503 three times in a row."
-
-
-def test_notify_crash_truncates_subject_to_sixty_characters(
-    isolated_repo: Path,
-    no_email: list[tuple[str, str]],
-) -> None:
-    summary = "x" * 200
-
-    harness_mcp.notify_crash(summary)
-
-    subject, _ = no_email[0]
-    assert subject == "[Agent] CRASH: " + "x" * 60
-
-
-def test_notify_crash_does_not_overwrite_a_same_second_report(
-    isolated_repo: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    no_email: list[tuple[str, str]],
-) -> None:
-    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-
-    first = harness_mcp.notify_crash("first failure")
-    second = harness_mcp.notify_crash("second failure")
-
-    assert first["crash_file"] == f"_CRASH-{STAMP}.md"
-    assert second["crash_file"] == f"_CRASH-{STAMP}-b.md"
-    outbox = isolated_repo / names.rel("from_agent")
-    assert (outbox / f"_CRASH-{STAMP}.md").read_text(
-        encoding="utf-8"
-    ).endswith("first failure\n")
-    assert (outbox / f"_CRASH-{STAMP}-b.md").read_text(
-        encoding="utf-8"
-    ).endswith("second failure\n")
-
-
-def test_archive_operator_messages_leaves_crash_reports_in_place(
-    isolated_repo: Path,
-) -> None:
-    outbox = isolated_repo / names.rel("from_agent")
-    outbox.mkdir(parents=True)
-    (outbox / "_CRASH-2026-09-01-000000.md").write_text("boom", encoding="utf-8")
-    (outbox / "old.md").write_text("ordinary", encoding="utf-8")
-
-    archived = _archive_operator_messages()
-
-    assert archived == ["old-from-agent.md"]
-    assert (outbox / "_CRASH-2026-09-01-000000.md").exists()
-
-
-# --- email plumbing -------------------------------------------------------
 
 
 def test_load_secrets_resolves_without_the_tools_package_importable(
@@ -1840,9 +1494,10 @@ def test_gate_tools_work_with_no_secrets_file_at_all(
 
     assert refused["status"] == "REFUSED"
     assert refused["emailed"] is False
-    assert refused["operator_message"] == f"{STAMP}-from-agent.md"
+    assert "not configured" in refused["note"]
     assert crashed["emailed"] is False
-    assert crashed["crash_file"] == f"_CRASH-{STAMP}.md"
+    assert "not configured" in crashed["note"]
+    assert crashed["journal_note"] == f"_UNRECORDED-{STAMP}-incident.md"
 
 
 def test_send_email_is_not_exposed_as_an_mcp_tool() -> None:
@@ -1913,7 +1568,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 57
+    assert len(tools) == 55
 
 
 
@@ -3196,3 +2851,101 @@ def test_no_harness_tool_can_write_operator_or_governance() -> None:
         for line in source.splitlines():
             if protected in line:
                 assert "write" not in line.lower() or "never edits" in line.lower() or "no harness tool" in line.lower(), line
+
+
+def test_operator_message_is_emailed_and_shown_in_the_session(
+    isolated_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_email: list[tuple[str, str]],
+) -> None:
+    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
+
+    result = _write_operator_message("Operator update. \U0001f680")
+
+    assert result == {"emailed": True, "message": "Operator update. \U0001f680"}
+    subject, body = no_email[0]
+    assert subject == f"[Agent] Operator Message: {STAMP}"
+    assert body == "Operator update. \U0001f680"
+
+
+def test_operator_message_without_email_says_so_and_writes_no_file(
+    isolated_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(harness_mcp, "_send_email", lambda subject, body: False)
+
+    result = _write_operator_message("Please look at this.")
+
+    assert result["emailed"] is False
+    assert result["message"] == "Please look at this."
+    assert "shift report" in result["note"]
+    assert [p for p in isolated_repo.rglob("*") if p.is_file() and "private" not in p.parts] == []
+
+
+def test_spend_refusal_emails_the_request_and_writes_no_message_file(
+    isolated_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_email: list[tuple[str, str]],
+) -> None:
+    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
+    _write_wallet(isolated_repo, armed=False)
+    _unlock(monkeypatch)
+
+    result = harness_mcp.authorise_spend(
+        "invent_kind", "telemetry-beacon: a beacon that reports drift"
+    )
+
+    assert result["status"] == "REFUSED"
+    assert result["emailed"] is True
+    assert "SPENDING REQUEST" in result["request"]
+    assert "telemetry-beacon" in result["request"]
+    subject, body = no_email[0]
+    assert subject == "[Agent] Spending request: invent_kind"
+    assert "invent_kind" in body
+
+
+def test_notify_crash_emails_and_leaves_a_journal_note_for_the_next_wake(
+    isolated_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_email: list[tuple[str, str]],
+) -> None:
+    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
+
+    result = harness_mcp.notify_crash("City returned 503 three times in a row.")
+
+    assert result["emailed"] is True
+    assert result["journal_note"] == f"_UNRECORDED-{STAMP}-incident.md"
+    subject, body = no_email[0]
+    assert subject.startswith("[Agent] CRASH: City returned 503")
+    assert body == "City returned 503 three times in a row."
+    recovered = harness_mcp.recover_unrecorded()
+    assert "INCIDENT REPORT" in recovered
+    assert "City returned 503" in recovered
+    filed = harness_mcp.file_unrecorded(result["journal_note"])
+    assert filed == f"2026-09/{STAMP}-incident-recovered.md"
+
+
+def test_notify_crash_truncates_subject_to_sixty_characters(
+    isolated_repo: Path,
+    no_email: list[tuple[str, str]],
+) -> None:
+    harness_mcp.notify_crash("x" * 200)
+
+    subject, _ = no_email[0]
+    assert subject == "[Agent] CRASH: " + "x" * 60
+
+
+def test_notify_crash_does_not_overwrite_a_same_second_report(
+    isolated_repo: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    no_email: list[tuple[str, str]],
+) -> None:
+    monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
+
+    first = harness_mcp.notify_crash("first failure")
+    second = harness_mcp.notify_crash("second failure")
+
+    journal = isolated_repo / names.rel("journal")
+    assert (journal / first["journal_note"]).read_text(encoding="utf-8").endswith("first failure\n")
+    assert (journal / second["journal_note"]).read_text(encoding="utf-8").endswith("second failure\n")
+    assert first["journal_note"] != second["journal_note"]

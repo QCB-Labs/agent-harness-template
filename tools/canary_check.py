@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from tools import names  # noqa: E402
 
 MARKER_PATTERN = re.compile(r'^CANARY_MARKER\s*=\s*[\"\'](canary-[0-9a-f]{12})[\"\']\s*$', re.MULTILINE)
-SCAN_DIRECTORIES = tuple(names.dir_name(k) for k in ("drafts", "memory", "communications"))
+SCAN_DIRECTORIES = tuple(names.dir_name(k) for k in ("drafts", "memory"))
 
 
 def read_marker(bait_path: Path) -> str | None:

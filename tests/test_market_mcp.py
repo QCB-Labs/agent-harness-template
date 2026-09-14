@@ -291,13 +291,8 @@ def test_purchase_listing_held_when_disarmed(tmp_path: Path, monkeypatch: pytest
                 assert res["error"] == "DISARMED"
                 assert "pay_armed" in res["message"]
 
-                outbox = tmp_path / names.rel("from_agent")
-                assert outbox.exists()
-                messages = list(outbox.glob("*-from-agent.md"))
-                assert len(messages) == 1
-                msg_content = messages[0].read_text(encoding="utf-8")
-                assert "Operator Request: Purchase Listing #50" in msg_content
-                assert "merchant_alice" in msg_content
+                assert "merchant_alice" in res["message"]
+                assert not list(tmp_path.rglob("*.md"))
 
 
 def test_purchase_listing_refused_when_circle_session_expired(monkeypatch: pytest.MonkeyPatch) -> None:

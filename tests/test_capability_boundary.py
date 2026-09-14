@@ -51,7 +51,6 @@ PATH_PARAM_NAMES = {"path", "filepath", "file_path", "fullpath", "abspath", "dir
 # Anything added here needs a comment explaining how it is contained.
 NAME_PARAM_ALLOWLIST = {
     "file_unrecorded",            # resolves inside memory/journal, name only
-    "archive_operator_messages",  # resolves inside communications/, name only
 }
 
 # A name may be interpolated into a glob pattern only if it is a module-level

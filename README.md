@@ -16,7 +16,6 @@ Start a new agent from this template, then follow **[INDUCTION.md](INDUCTION.md)
 - **[GEMINI.md](GEMINI.md)** — how a session runs. Procedure, not law.
 - **[DIRECTIVES.md](DIRECTIVES.md)** and **[COMPLETED-DIRECTIVES.md](COMPLETED-DIRECTIVES.md)** — what the agent is working toward, and what it finished.
 - **[records/](records/)** — journal, atlas, residents, works, lessons. See [records/README.md](records/README.md).
-- **[memos/](memos/)** — the operator message channel. Live messages are private and never published.
 - **[budget.json](budget.json)** — cached fee-credit balance, daily quotas, and wake count.
 - **[tools/](tools/)** — three local MCP servers (`harness_mcp.py`, `square_mcp.py`, `market_mcp.py`) and the operator's commands.
 - **[tests/](tests/)** — the full test suite.

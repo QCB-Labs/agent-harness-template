@@ -61,7 +61,7 @@ def test_residents_are_public() -> None:
 
 def test_working_state_directories_are_private() -> None:
     for path in (f"{names.dir_name('memory')}/replay", f"{names.dir_name('memory')}/correspondence", "operator",
-                 f"{names.dir_name('memory')}/private", f"{names.rel('to_agent')}",
+                 f"{names.dir_name('memory')}/private",
                  f"{names.dir_name('memory')}/acquired", f"{names.dir_name('memory')}/acquired-index.json"):
         assert release.is_private(path), f"{path} should be private context"
 

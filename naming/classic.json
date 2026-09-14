@@ -2,7 +2,6 @@
   "scheme": "classic",
   "dirs": {
     "memory": "memory",
-    "communications": "messages",
     "drafts": "drafts"
   },
   "paths": {
@@ -21,10 +20,7 @@
     "wishlist_archive": "{memory}/wishlist-archive.md",
     "continuity": "{memory}/continuity.md",
     "open_threads": "{memory}/open-threads.md",
-    "city_rules": "{memory}/city-rules.md",
-    "to_agent": "{communications}/inbox",
-    "from_agent": "{communications}/outbox",
-    "comms_archive": "{communications}/archive"
+    "city_rules": "{memory}/city-rules.md"
   },
   "headings": {
     "identity": "# PERSONA",

@@ -246,22 +246,6 @@ def read_recent_journal(n: int = 5) -> str:
     )
 
 
-@mcp.tool(name=names.tool("read_operator_messages"))
-@enters_private
-def read_operator_messages(conversation_id: HostConversationId = None) -> str:
-    """Return pending operator messages in filename order."""
-    inbox = REPO / names.rel("to_agent")
-    messages = sorted(
-        path for path in inbox.glob("*.md") if path.name != "README.md"
-    )
-    if not messages:
-        return "(no operator messages)"
-    return "\n\n---\n\n".join(
-        f"**{message.name}**\n\n{message.read_text(encoding='utf-8')}"
-        for message in messages
-    )
-
-
 def _format_unknown_email_refusal(status: dict[str, object]) -> str:
     reason = status.get("reason")
     if reason == "same_conversation_private":
@@ -536,25 +520,25 @@ def send_new_thread(correspondent_key: str, subject: str, body: str) -> str:
 @mcp.tool(name=names.tool("request_new_correspondent"))
 @requires_phase(PRIVATE)
 def request_new_correspondent(proposed_name: str, proposed_email: str,
-                              reason: str) -> str:
+                              reason: str) -> dict[str, object]:
     """Ask the operator to approve a new correspondent.
 
-    Writes a request for review. It does NOT modify the allowlist: the agent
+    Emails a request for review. It does NOT modify the allowlist: the agent
     can ask to widen its reach but can never widen it itself.
     """
-    folder = REPO / names.rel("from_agent") / "correspondent-requests"
     stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
-    written = _create_without_overwriting(
-        folder, f"{stamp}-request",
-        f"# Correspondent request\n\n"
+    request = (
+        f"Correspondent request\n\n"
         f"- proposed_name: {proposed_name.strip()}\n"
         f"- proposed_email: {proposed_email.strip()}\n"
         f"- requested_utc: {stamp}\n\n"
-        f"## Why\n\n{reason.strip()}\n\n"
+        f"Why: {reason.strip()}\n\n"
         f"To approve: add the entry to correspondents.json in the trust anchor.\n"
-        f"This file does not grant anything on its own.\n",
+        f"This request does not grant anything on its own.\n"
     )
-    return f"request filed: {written.name} (the allowlist is unchanged)"
+    result = _message_operator("Correspondent request", request)
+    result["allowlist"] = "unchanged"
+    return result
 
 
 @mcp.tool(name=names.tool("read_correspondence"))
@@ -1025,76 +1009,34 @@ def _create_without_overwriting(
             attempt += 1
 
 
-def _write_operator_message(
-    content: str,
-    dispatch_email: bool = True,
-) -> str:
-    stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
-    message_path = _create_without_overwriting(
-        REPO / names.rel("from_agent"),
-        f"{stamp}-from-agent",
-        f"# {stamp}\n\n{content}\n",
-    )
-    # Email bridge: non-blocking dispatch to operator's email
-    if dispatch_email:
-        subject = f"[{profile.display_name()}] Operator Message: {stamp}"
-        _send_email(subject, content)
+NO_EMAIL_NOTE = (
+    "Email is not configured, so this was NOT emailed. Tell the operator in this "
+    "session, and copy it into this wake's shift report."
+)
 
-    return message_path.name
+
+def _message_operator(subject: str, content: str) -> dict[str, object]:
+    """Email the operator. The text always comes back so the session shows it.
+
+    There are no message folders. The operator talks to the agent in the
+    session; the agent reaches the operator by email when they are away.
+    """
+    emailed = _send_email(f"[{profile.display_name()}] {subject}", content)
+    result: dict[str, object] = {"emailed": emailed, "message": content}
+    if not emailed:
+        result["note"] = NO_EMAIL_NOTE
+    return result
 
 
 @mcp.tool(name=names.tool("write_operator_message"))
 @enters_private
 def write_operator_message(
     content: str,
-    dispatch_email: bool = True,
     conversation_id: HostConversationId = None,
-) -> str:
-    """Write a timestamped message for the agent's operator and dispatch an email copy."""
-    return _write_operator_message(content, dispatch_email)
-
-
-@mcp.tool(name=names.tool("archive_operator_messages"))
-@enters_private
-def archive_operator_messages(
-    current_message_filename: str | None = None,
-    conversation_id: HostConversationId = None,
-) -> list[str] | str:
-    """Archive read incoming and old outgoing operator messages."""
-    communications = REPO / names.dir_name("communications")
-    archive = REPO / names.rel("comms_archive")
-    archive.mkdir(parents=True, exist_ok=True)
-    move_plan: list[tuple[Path, Path]] = []
-
-    directions = [
-        (REPO / names.rel("from_agent"), "from-agent", current_message_filename),
-        (REPO / names.rel("to_agent"), "to-agent", None),
-    ]
-    for source_dir, direction, skipped_name in directions:
-        for source in sorted(source_dir.glob("*.md")):
-            if source.name == "README.md" or source.name == skipped_name:
-                continue
-            # Crash reports are operator alerts, not correspondence. Sweeping
-            # them into archive/ at end of session would bury the evidence the
-            # operator is being emailed about.
-            if source.name.startswith("_CRASH-"):
-                continue
-            destination_name = source.name
-            if f"-{direction}" not in source.stem:
-                destination_name = f"{source.stem}-{direction}{source.suffix}"
-            move_plan.append((source, archive / destination_name))
-
-    destinations = [destination for _, destination in move_plan]
-    if len(destinations) != len(set(destinations)):
-        raise FileExistsError("archive destination collision within move set")
-    for _, destination in move_plan:
-        if destination.exists():
-            raise FileExistsError(f"archive destination already exists: {destination.name}")
-
-    for source, destination in move_plan:
-        shutil.move(source, destination)
-    archived = [destination.name for _, destination in move_plan]
-    return archived or "(nothing to archive)"
+) -> dict[str, object]:
+    """Email a message to the operator. The message also appears in this session."""
+    stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
+    return _message_operator(f"Operator Message: {stamp}", content)
 
 
 @mcp.tool(name=names.tool("read_wallet_config"))
@@ -1238,7 +1180,7 @@ def authorise_spend(action: str, detail: str = "") -> dict[str, object]:
       2. An admin session is unlocked: the operator is present now.
 
     A command signed in advance does not approve a spend. Nothing arriving by
-    email approves anything. When disarmed this writes and emails a request and
+    email approves anything. When disarmed this emails a request and
     refuses. When it passes it issues a city_credit_request_id and logs it; use
     that exact id in the paid call. It never spends and never writes pay_armed.
     """
@@ -1256,26 +1198,17 @@ def authorise_spend(action: str, detail: str = "") -> dict[str, object]:
             f"Detail: {detail_text or '(none given)'}. "
             "pay_armed is currently false — operator approval needed."
         )
-        try:
-            operator_message = _write_operator_message(spending_request, dispatch_email=False)
-        except Exception:
-            # The refusal itself must never fail. Losing the written record is
-            # survivable; letting the gate raise is not, because an exception is
-            # not a refusal and the agent may read it as an unclear result.
-            operator_message = None
-        emailed = _send_email(
-            subject=f"[{profile.display_name()}] Spending request: {clean_action}",
-            body=spending_request,
-        )
+        notice = _message_operator(f"Spending request: {clean_action}", spending_request)
         return {
             "status": "REFUSED",
             "reason": (
-                "pay_armed is false: the operator has not approved spending. An "
-                "operator message has been written and the operator emailed. Do "
+                "pay_armed is false: the operator has not approved spending. The "
+                "request has been sent to the operator. Do "
                 "not call city.credit_preflight. Do not attempt to spend."
             ),
-            "operator_message": operator_message,
-            "emailed": emailed,
+            "emailed": notice["emailed"],
+            "request": spending_request,
+            **({"note": notice["note"]} if "note" in notice else {}),
         }
 
     # pay_armed is checked first so a disarmed gate still reaches the request
@@ -1861,18 +1794,21 @@ def upsert_resident(
 
 @mcp.tool(name=names.tool("notify_crash"))
 def notify_crash(summary: str) -> dict[str, object]:
-    """Record a crash report for the operator and email it. Records only."""
+    """Report a failure: email the operator and save it for the journal.
+
+    The report is saved as an unfiled journal note, the same kind a wake leaves
+    when it dies mid-record. recover_unrecorded shows it at the start of the
+    next wake, and file_unrecorded files it into the shift reports.
+    """
     stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
-    crash_path = _create_without_overwriting(
-        REPO / names.rel("from_agent"),
-        f"_CRASH-{stamp}",
-        f"# CRASH REPORT {stamp}\n\n{summary}\n",
+    note = _create_without_overwriting(
+        REPO / names.rel("journal"),
+        f"{UNRECORDED_PREFIX}{stamp}-incident",
+        f"# INCIDENT REPORT {stamp}\n\n{summary}\n",
     )
-    emailed = _send_email(
-        subject=f"[{profile.display_name()}] CRASH: {summary[:60]}",
-        body=summary,
-    )
-    return {"crash_file": crash_path.name, "emailed": emailed}
+    result = _message_operator(f"CRASH: {summary[:60]}", summary)
+    result["journal_note"] = note.name
+    return result
 
 
 # ---------------------------------------------------------------------------

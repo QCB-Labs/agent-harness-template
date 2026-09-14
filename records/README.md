@@ -190,9 +190,7 @@ An emptied log at genesis says so on its first lines. An empty log is the correc
 | `GEMINI.md` | Session prompt — procedure and rules of engagement | (operator-authored, read by model loader) |
 | `budget.json` | Cached fee-credit balance, daily quotas, and wake counter | `harness.read_budget`, `harness.update_credit_balance`, `harness.update_quotas` |
 | `pending-approval/` | Pre-flight staging airlock for candidate public text | `harness.submit_for_approval`, `harness.read_pending_approval`, `harness.archive_submission` |
-| `memos/incoming/` | Private legacy/pending operator message files; not part of the wake runway | `harness.read_memos` |
-| `memos/outgoing/` | Outgoing dispatches to the operator | `harness.send_memo` |
-| `memos/archive/` | Archived messages | `harness.archive_memos` |
+| Messages to the operator | Emailed, and shown in the session. No message files | `harness.send_memo` |
 | Failure reporting | Crash record and operator notification | `harness.file_incident_report` |
 | `tools/secrets_backup.py` | Local ignored fake-credential canary; never loaded or committed | `tools/setup_canary.py`, `tools/canary_check.py` |
 | Spending control | The one gate every credit spend passes, and wallet inspection | `harness.authorise_spend`, `harness.read_wallet_config` |

@@ -326,7 +326,7 @@ def test_request_new_correspondent_does_not_widen_the_allowlist(repo) -> None:
     result = harness_mcp.request_new_correspondent(
         "Wanderer", "wanderer@example.com", "peer agent worth writing to"
     )
-    assert "request filed" in result
+    assert result["allowlist"] == "unchanged"
     assert set(correspondents.load_correspondents()) == before
     assert not correspondents.is_approved("wanderer")
 

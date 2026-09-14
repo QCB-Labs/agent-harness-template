@@ -488,31 +488,16 @@ def purchase_listing(listing_id: int, purpose: str) -> dict:
 
     # Check Gate B: pay_armed
     if not wallet.pay_armed():
-        # Record operator request in communications/from-agent
-        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d-%H%M%S")
-        outbox = REPO_ROOT / names.rel("from_agent")
-        outbox.mkdir(parents=True, exist_ok=True)
-        req_file = outbox / f"{stamp}-from-agent.md"
-        note = (
-            f"# Operator Request: Purchase Listing #{listing_id}\n\n"
-            f"{profile.display_name()} requested to purchase listing #{listing_id} ('{listing_data.get('title')}') "
-            f"for {price_num} USDC on 1F3EA.com.\n\n"
-            f"- **Aisle:** {listing_data.get('aisle', 'general')}\n"
-            f"- **Seller:** {listing_data.get('seller', 'unknown')}\n"
-            f"- **Action Held:** `pay_armed` is currently `false` in `wallet-config.json`.\n"
-            "To authorize this spend, set `pay_armed: true` in `wallet-config.json` for the next wake.\n"
-        )
-        req_file.write_text(note, encoding="utf-8")
-
         return {
             "status": "HELD",
             "error": "DISARMED",
             "message": (
-                f"DISARMED: Paid purchase of listing #{listing_id} ({price_num} USDC) requires operator "
-                "to arm wallet-config.json ('pay_armed': true). Request recorded in "
-                f"{names.rel('from_agent')}/{req_file.name}."
+                f"DISARMED: Paid purchase of listing #{listing_id} "
+                f"('{listing_data.get('title')}', {price_num} USDC, seller "
+                f"{listing_data.get('seller', 'unknown')}) needs the operator to set "
+                "pay_armed: true in wallet-config.json. Tell the operator with "
+                "harness.write_operator_message and note it in this wake's shift report."
             ),
-            "request_file": req_file.name,
         }
 
     # Gate C: Live circle session

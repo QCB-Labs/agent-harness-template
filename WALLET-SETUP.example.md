@@ -112,7 +112,7 @@ stops at the first that fails:
    `mode:"autonomous-approved"`, caps verified, a public address, and `1F3EA`
    in `site_scope`.
 2. **Armed:** `pay_armed` is true. If not, the purchase is HELD and a request is
-   written to `memos/outgoing/` for the operator.
+   returned for the agent to pass to the operator.
 3. **Session:** a live Circle session (`circle wallet status`). Sessions expire
    after about 7 days; the operator re-authenticates by OTP.
 4. **Pay:** `wallet.pay()` sends USDC to the listing's seller, refusing anything
