@@ -29,3 +29,44 @@ def _isolate_live_state(tmp_path_factory: pytest.TempPathFactory,
     monkeypatch.setattr(phase, "REPO_ROOT", sandbox)
     monkeypatch.setattr(authority, "REPO_ROOT", sandbox)
     monkeypatch.setenv("AGENT_SESSION_DIR", str(sandbox / "session"))
+
+
+# --- Run-safety guard -------------------------------------------------------
+# An elevated test run once wrote its scratch folders into a notes folder as
+# Administrator; the operator's user could not read or delete them, and the
+# notes app stopped loading. So: test scratch stays in the system temp folder,
+# and tests never run elevated (CI runners are the exception).
+
+
+def _is_elevated() -> bool:
+    import ctypes
+    import os
+    import sys
+
+    if not sys.platform.startswith("win"):
+        return hasattr(os, "geteuid") and os.geteuid() == 0
+    try:
+        return bool(ctypes.windll.shell32.IsUserAnAdmin())
+    except Exception:
+        return False
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    import os
+    import tempfile
+    from pathlib import Path
+
+    basetemp = config.option.basetemp
+    if basetemp:
+        temp_root = Path(tempfile.gettempdir()).resolve()
+        target = Path(basetemp).resolve()
+        if temp_root != target and temp_root not in target.parents:
+            raise pytest.UsageError(
+                f"--basetemp must be inside the system temp folder ({temp_root}), "
+                f"not {target}. Leave --basetemp unset to use the default."
+            )
+    if _is_elevated() and not os.environ.get("CI"):
+        raise pytest.UsageError(
+            "Refusing to run tests as administrator: files created elevated "
+            "cannot be read or deleted by your normal user. Run from a normal window."
+        )
