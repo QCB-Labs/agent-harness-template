@@ -42,8 +42,6 @@ block personal details and secrets from commits:
 python hooks/install.py
 ```
 
-*(The hooks directory is added in Ticket 5 of the template build. If it is
-missing, skip this line.)*
 
 ### Step 2 — Name the agent
 

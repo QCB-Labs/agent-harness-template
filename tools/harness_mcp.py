@@ -991,7 +991,7 @@ def _create_without_overwriting(
     overwritten. On collision the name gains ``-b``, ``-c`` ... matching
     ``write_journal``'s convention, so a same-second second write records
     itself instead of raising. Operator notifications must never be lost to a
-    timestamp clash, and the T4 spending gate must never fail to record a
+    timestamp clash, and the spending gate must never fail to record a
     request.
     """
     directory.mkdir(parents=True, exist_ok=True)
@@ -1054,7 +1054,7 @@ def read_wallet_config() -> dict[str, object]:
 
 
 # --------------------------------------------------------------------------
-# Ticket 4 — spending gate + operator notifications
+# Spending gate + operator notifications
 # --------------------------------------------------------------------------
 
 
@@ -1270,7 +1270,7 @@ def authorise_spend(action: str, detail: str = "") -> dict[str, object]:
 
 
 # ---------------------------------------------------------------------------
-# T8 — Persistent Map + Routing Assist
+# Persistent map + routing assist
 # ---------------------------------------------------------------------------
 # memory/map.json is a CACHE, not truth. The city is always authoritative.
 # A missing or corrupt file returns the empty default and carries on.
@@ -1489,7 +1489,7 @@ def compute_route(current_id: int, target_id: int) -> dict[str, object]:
 
 
 # ---------------------------------------------------------------------------
-# T9 — Resident Registry (social memory)
+# Resident registry (social memory)
 # ---------------------------------------------------------------------------
 # memory/registry.json stores the agent's accumulated relationship memory.
 # This is NOT a roster — it is who it has dealt with and what happened.

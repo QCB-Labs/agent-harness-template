@@ -1177,7 +1177,7 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
 
 
 # ---------------------------------------------------------------------------
-# Ticket 4 — spending gate + operator notifications
+# Spending gate + operator notifications
 # ---------------------------------------------------------------------------
 
 
@@ -1731,7 +1731,7 @@ def test_crash_dump_survives_a_failed_write_and_can_then_be_filed(
 
 
 # ---------------------------------------------------------------------------
-# T8 — Persistent Map + Routing Assist
+# Persistent map + routing assist
 # ---------------------------------------------------------------------------
 
 
@@ -1939,7 +1939,7 @@ def test_compute_route_note_text(isolated_repo: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# T9 — Resident Registry (social memory)
+# Resident registry (social memory)
 # ---------------------------------------------------------------------------
 
 
@@ -2690,7 +2690,7 @@ def test_works_catalogue_read_and_update_index(isolated_repo: Path) -> None:
         f"{names.heading('works_index')}\n\n"
         "| Date | Title | Form | Public state | Place | Record |\n"
         "|------|-------|------|-------------|-------|--------|\n"
-        "| 2026-09-08 | Orbital Survey | Note | Public | Place 3 | items/2026-09-08-orbital.md |\n"
+        "| 2026-09-08 | Valley Survey | Note | Public | Place 3 | items/2026-09-08-valley.md |\n"
     )
     res = harness_mcp.update_works_index(sample_index)
     assert f"{names.rel('works')}/index.md updated" in res
