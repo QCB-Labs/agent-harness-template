@@ -1,5 +1,6 @@
 import datetime
 import json
+import os
 from pathlib import Path
 import shutil
 import sys
@@ -1074,7 +1075,11 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     (tmp_path / names.rel("city_rules")).write_text(
         "# Rules\n\n## Proposed\n\n- Existing proposal.\n", encoding="utf-8"
     )
-    server = StdioServerParameters(command=sys.executable, args=[str(server_path)])
+    # The spawned server is a separate process, so conftest's isolation does not
+    # reach it. Give it its own session folder: a live operator session on this
+    # machine must not change what the server allows.
+    server_env = {**os.environ, "AGENT_SESSION_DIR": str(tmp_path / "isolated-session")}
+    server = StdioServerParameters(command=sys.executable, args=[str(server_path)], env=server_env)
 
     async with stdio_client(server) as (read_stream, write_stream):
         async with ClientSession(read_stream, write_stream) as session:
