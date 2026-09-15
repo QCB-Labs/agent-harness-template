@@ -1,12 +1,11 @@
 {
-  "_comment": "Circle Agent Wallet config for the agent. Copy to wallet-config.json and fill in your values. NON-SECRET — no private key, no OTP, no session token ever goes here. Supports 1F3D9 (City fees) and 1F3EA (Market tools/artifacts). Until mode is 'autonomous-approved' AND enabled is true, the harness keeps all money actions OFF.",
+  "_comment": "Circle agent wallet config for the agent's Market (1F3EA) use: listing fees and sales. City actions use fee credits, not this wallet. Copy to wallet-config.json and fill in your values. NON-SECRET: no private key, login code, or session token ever goes here. See WALLET-SETUP.example.md.",
   "enabled": false,
   "mode": "disabled",
   "provider": "circle-agent-wallet",
-  "cli_pin": "@circle-fin/cli@0.0.6",
+  "cli_pin": "@circle-fin/cli@1.0.0",
   "chain": "BASE",
   "site_scope": [
-    "1F3D9",
     "1F3EA"
   ],
   "public_address": "0x0000000000000000000000000000000000000000",
@@ -22,7 +21,7 @@
   "caps_verified_utc": "",
   "session": {
     "expires_after_days": 7,
-    "note": "Circle sessions expire; re-auth by human email OTP. the market server checks `circle wallet status` before any paid purchase and disables money actions if the session is expired/missing."
+    "note": "Circle sessions expire; the operator logs in again with `circle wallet login` (code by email) before paying."
   },
   "setup_state": "incomplete",
   "autonomous_permission": "",

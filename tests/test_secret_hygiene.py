@@ -111,8 +111,7 @@ def test_example_templates_exist_and_are_safe() -> None:
     wallet_data = json.loads(wallet_example.read_text(encoding="utf-8"))
     assert wallet_data["enabled"] is False
     assert wallet_data["mode"] == "disabled"
-    assert "1F3D9" in wallet_data["site_scope"]
-    assert "1F3EA" in wallet_data["site_scope"]
+    assert wallet_data["site_scope"] == ["1F3EA"]
     assert wallet_data["public_address"] == "0x0000000000000000000000000000000000000000"
 
     # 3. .agents/mcp_config.example.json

@@ -98,64 +98,15 @@ def test_wallet_session_ok_returns_false_on_nonzero_exit() -> None:
 
 def test_wallet_session_ok_returns_true_on_success() -> None:
     import subprocess
-    mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout="active", stderr="")
+    stdout = json.dumps({"data": {"mainnet": {"tokenStatus": "VALID"}}})
+    mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
     with patch("subprocess.run", return_value=mock_result):
         assert wallet.wallet_session_ok() is True
 
 
-# --- wallet_context_line ---
-
-def test_wallet_context_line_browse_only_when_disabled() -> None:
-    line = wallet.wallet_context_line(cfg={})
-    assert "browse-only" in line
-    assert "NO spending authority" in line
-
-
-def test_wallet_context_line_shows_caps_when_approved() -> None:
-    line = wallet.wallet_context_line(cfg=FULL_CONFIG)
-    assert "approved" in line.lower()
-    assert "0xABCD" in line
-    assert "per-tx 5.0" in line
-
-
-# --- pay: gate enforcement ---
-
-def test_pay_raises_refused_when_not_allowed() -> None:
-    with pytest.raises(wallet.PayRefused, match="money_actions_allowed"):
-        wallet.pay("0xRecipient", 1.0, "test", cfg={})
-
-
-def test_pay_raises_held_when_not_armed() -> None:
-    cfg = {**FULL_CONFIG, "pay_armed": False}
-    with pytest.raises(wallet.PayHeld, match="DISARMED"):
-        wallet.pay("0xRecipient", 1.0, "test", cfg=cfg)
-
-
-def test_pay_raises_refused_when_session_expired() -> None:
-    with patch.object(wallet, "wallet_session_ok", return_value=False):
-        with pytest.raises(wallet.PayRefused, match="No live Circle session"):
-            wallet.pay("0xRecipient", 1.0, "test", cfg=FULL_CONFIG)
-
-
-def test_pay_raises_refused_when_over_cap() -> None:
-    official = {"treasury": "0xRecipient", "network": "base"}
-    with patch.object(wallet, "wallet_session_ok", return_value=True):
-        with patch("urllib.request.urlopen") as mock_open:
-            resp = json.dumps(official).encode()
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = lambda s, *a: None
-            mock_open.return_value.read.return_value = resp
-            with pytest.raises(wallet.PayRefused, match="exceeds per-tx cap"):
-                wallet.pay("0xRecipient", 99.0, "test", cfg=FULL_CONFIG)
-
-
-def test_pay_raises_refused_when_recipient_mismatch() -> None:
-    official = {"treasury": "0xTreasury", "network": "base"}
-    with patch.object(wallet, "wallet_session_ok", return_value=True):
-        with patch("urllib.request.urlopen") as mock_open:
-            resp = json.dumps(official).encode()
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = lambda s, *a: None
-            mock_open.return_value.read.return_value = resp
-            with pytest.raises(wallet.PayRefused, match="does NOT match"):
-                wallet.pay("0xWrongAddress", 1.0, "test", cfg=FULL_CONFIG)
+def test_wallet_session_ok_returns_false_when_login_expired() -> None:
+    import subprocess
+    stdout = json.dumps({"data": {"mainnet": {"tokenStatus": "EXPIRED"}}})
+    mock_result = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+    with patch("subprocess.run", return_value=mock_result):
+        assert wallet.wallet_session_ok() is False

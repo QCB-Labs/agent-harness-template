@@ -2706,18 +2706,18 @@ def test_works_catalogue_items_lifecycle_and_security(isolated_repo: Path) -> No
 
     # 2. Upsert valid work item
     sample_work = (
-        "# Orbital Survey Beacon\n\n"
+        "# Field Lantern\n\n"
         "- Form: note\n"
-        "- City ID: #2491\n\n"
+        "- City ID: #101\n\n"
         "## The work\n\n"
         "Telemetry verified across junction 195.\n"
     )
-    saved = harness_mcp.upsert_work("2026-09-08-beacon", sample_work)
-    assert f"{names.rel('works')}/items/2026-09-08-beacon.md saved" in saved
+    saved = harness_mcp.upsert_work("2026-09-08-lantern", sample_work)
+    assert f"{names.rel('works')}/items/2026-09-08-lantern.md saved" in saved
     assert str(len(sample_work)) in saved
 
     # 3. Read back valid work item
-    assert harness_mcp.read_work("2026-09-08-beacon") == sample_work
+    assert harness_mcp.read_work("2026-09-08-lantern") == sample_work
 
     # 4. Path traversal and slug validation checks on upsert
     assert harness_mcp.upsert_work("", "content") == "REFUSED — work slug cannot be empty."
@@ -2892,13 +2892,13 @@ def test_spend_refusal_emails_the_request_and_writes_no_message_file(
     _unlock(monkeypatch)
 
     result = harness_mcp.authorise_spend(
-        "invent_kind", "telemetry-beacon: a beacon that reports drift"
+        "invent_kind", "field-lantern: a lantern for night work"
     )
 
     assert result["status"] == "REFUSED"
     assert result["emailed"] is True
     assert "SPENDING REQUEST" in result["request"]
-    assert "telemetry-beacon" in result["request"]
+    assert "field-lantern" in result["request"]
     subject, body = no_email[0]
     assert subject == "[Agent] Spending request: invent_kind"
     assert "invent_kind" in body

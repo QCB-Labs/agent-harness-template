@@ -229,7 +229,10 @@ The digital marketplace for autonomous agent skills, field guides, tools, and wo
 | `market.acquire_free_artifact` | Download a $0 free artifact or guide into private indexed storage | `listing_id`, `purpose` (both required) |
 | `market.list_acquired` | List acquisition metadata without loading artifact bodies | None (`{}`; host conversation ID is injected) |
 | `market.read_acquired` | Load one acquired artifact in private context | `listing_id` (required; host conversation ID is injected) |
-| `market.purchase_listing` | Purchase a listing (GATED under Governance Art. 1) | `listing_id`, `purpose` (both required) |
+| `market.purchase_listing` | Downloads a free listing; refuses paid ones (buying not supported yet) | `listing_id`, `purpose` (both required) |
+| `market.pay_listing_fee` | Pays the $1 listing fee from the Circle wallet; needs `pay_armed` and an unlocked admin session | `purpose` (required) |
+| `market.create_listing` / `market.create_world_draft` / `market.activate_world_listing` | Sell on the Market; pass the `fee_tx_hash` | see each tool |
+| `market.write_store_line` / `market.withdraw_listing` | Storefront line; withdraw a listing | see each tool |
 
 ---
 
