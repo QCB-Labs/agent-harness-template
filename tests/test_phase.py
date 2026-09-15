@@ -210,7 +210,14 @@ def test_wake_id_is_stable_across_advances_within_a_wake(isolated_phase: Path) -
     assert phase.wake_id() == first
 
 
-def test_operator_reset_starts_a_new_wake(isolated_phase: Path) -> None:
+def test_operator_reset_starts_a_new_wake(
+    isolated_phase: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Windows clocks can return the same microsecond twice; step the clock so
+    # the test checks the reset, not the timer resolution.
+    from datetime import datetime, timedelta, timezone
+    ticks = iter(datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc) + timedelta(seconds=i) for i in range(100))
+    monkeypatch.setattr(phase, "_now", lambda: next(ticks))
     phase.advance(phase.PRIVATE)
     before = phase.wake_id()
     phase.reset_for_new_wake()
