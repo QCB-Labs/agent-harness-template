@@ -1241,7 +1241,7 @@ def test_spend_refuses_when_armed_but_no_session(
     no_email: list[tuple[str, str]],
 ) -> None:
     """pay_armed alone is not permission. A human approves every spend at the
-    time of spending (Article 1), so the operator must be present."""
+    time of spending (Article 7), so the operator must be present."""
     _write_wallet(isolated_repo, armed=True)
     _unlock(monkeypatch, active=False)
 
@@ -1258,7 +1258,7 @@ def test_a_signed_command_does_not_approve_a_spend(
     monkeypatch: pytest.MonkeyPatch,
     no_email: list[tuple[str, str]],
 ) -> None:
-    """Article 1: no spending on unwatched wakes. Even a valid pre-signed command
+    """Article 7: no spending on unwatched wakes. Even a valid pre-signed command
     naming this exact action must not stand in for a present operator."""
     from tools import authority
 

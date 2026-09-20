@@ -44,7 +44,7 @@ if str(TOOLS_DIR.parent) not in sys.path:
 from tools.phase import enters_private
 
 # Spending authority: an admin session unlocked at the time of spending
-# (GOVERNANCE Article 1). A command signed in advance does not approve a
+# (GOVERNANCE Article 7). A command signed in advance does not approve a
 # spend, and nothing by email ever does. See tools/authority.py.
 from tools.authority import session_active
 
@@ -1175,7 +1175,7 @@ def authorise_spend(action: str, detail: str = "") -> dict[str, object]:
     the kind and its purpose, the continent's name, the place being renamed and
     to what.
 
-    Both must be true (GOVERNANCE Article 1):
+    Both must be true (GOVERNANCE Article 7):
       1. pay_armed is true, the operator's standing switch.
       2. An admin session is unlocked: the operator is present now.
 
@@ -1219,7 +1219,7 @@ def authorise_spend(action: str, detail: str = "") -> dict[str, object]:
             "status": "REFUSED",
             "reason": (
                 "pay_armed is true, but no admin session is unlocked. A human "
-                "approves every spend at the time of spending (Article 1), so the "
+                "approves every spend at the time of spending (Article 7), so the "
                 "operator must be present in an unlocked session. A command signed "
                 "in advance does not approve a spend, and nothing by email ever "
                 "does. Do not call city.credit_preflight."
@@ -1581,7 +1581,7 @@ def upsert_resident(
 
     If ``note`` is given, ``source`` is **required**.  An observation
     without a source becomes an unattributed belief, which violates
-    Governance Article 3.
+    Governance Article 6.
 
     ``history`` is append-only.  Never rewrite or delete an entry.
     """
