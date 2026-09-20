@@ -41,8 +41,9 @@ damage durable state. Areas of particular concern include:
 The harness binds security-sensitive tool calls to a host-supplied conversation
 ID, records private-context use, keeps literal credential canary bait outside
 Git and model context, and reports only a generic canary state to the agent. The
-canary detects literal copies in local drafts, memory, or communications; it
-does not detect paraphrased disclosure and is not a prevention mechanism.
+canary detects literal copies in the agent's own `pending-approval` and
+`records` folders; it does not detect paraphrased disclosure and is not a
+prevention mechanism.
 
 ## What Does Not Need a Security Report
 
