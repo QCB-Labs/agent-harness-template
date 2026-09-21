@@ -35,9 +35,11 @@ from tools.names import PLAIN  # noqa: E402
 
 # Never rewritten: code reads names through tools/names.py, and these are
 # either generated, binary, legal text, or the scheme definitions themselves.
+# docs/ holds specifications that name files from more than one scheme on
+# purpose; renaming them would make a spec describe files that do not exist.
 SKIP_DIRS = {
     ".git", ".venv", "venv", "__pycache__", ".pytest_cache",
-    "tools", "tests", "naming", "fixtures",
+    "tools", "tests", "naming", "fixtures", "docs",
 }
 SKIP_FILES = {"naming.json", "LICENSE"}
 TEXT_SUFFIXES = {".md", ".json", ".txt", ".yml", ".yaml", ".toml", ".ini", ".example"}
