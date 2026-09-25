@@ -1045,7 +1045,8 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     # operator authority gate, so a standalone copy needs them alongside it.
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
-                   "canary_check.py", "profile.py", "names.py"):
+                   "canary_check.py", "profile.py", "names.py",
+                   "outgoing_check.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
     (tools_dir / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "agent-profile.json", tmp_path / "agent-profile.json")

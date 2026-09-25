@@ -15,6 +15,11 @@ MARKET_TOKEN = "1f3ea_sk_your_secret_here"    # optional; or env AGENT_MARKET_TO
 AGENT_EMAIL_ADDRESS = "agent@example.com"
 AGENT_EMAIL_APP_PASSWORD = "xxxxxxxxxxxxxxxx"
 
+# Additional non-example addresses that outgoing mail may mention.
+# OUTGOING_ALLOWED_ADDRESSES = [
+#     "approved@trusted.invalid",
+# ]
+
 # --- Optional: reports to the operator ---
 # Where after-action reports, crash reports, operator messages, and spend
 # requests are sent. The harness sends from GMAIL_ADDRESS if set, otherwise

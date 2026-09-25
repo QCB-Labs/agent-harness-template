@@ -36,6 +36,13 @@ from pathlib import Path
 
 from tools.correspondents import address_to_key
 from tools import names, profile
+from tools.outgoing_check import check_outgoing
+
+
+class OutgoingCheckError(Exception):
+    """Raised when outgoing checks refuse peer or mailbag mail."""
+
+    pass
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -573,10 +580,188 @@ def enforce_reply_length(body: str, scope: str) -> tuple[str, bool]:
     return body[:limit].rstrip() + "\n\n[reply truncated at the limit for this scope]", True
 
 
+HTML_WRAPPER_STYLE = (
+    "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, "
+    "Helvetica, Arial, sans-serif; line-height: 1.6; color: #24292f; "
+    "max-width: 720px; margin: 0 auto; padding: 20px;"
+)
+
+
+def _format_inline(text: str) -> str:
+    """Format inline Markdown elements within already-escaped text."""
+
+    codes: list[str] = []
+
+    def _save_code(match: re.Match) -> str:
+        codes.append(f"<code>{match.group(1)}</code>")
+        return f"\x00CODE_{len(codes) - 1}\x00"
+
+    text = re.sub(r"`([^`\n]+)`", _save_code, text)
+    links: list[str] = []
+
+    def _save_markdown_link(match: re.Match) -> str:
+        url = match.group(2).strip()
+        if url.startswith("https://") or url.startswith("mailto:"):
+            links.append(f'<a href="{url}">{url}</a>')
+            return f"\x00LINK_{len(links) - 1}\x00"
+        return match.group(0)
+
+    text = re.sub(r"\[([^\]\n]*)\]\(([^)\s]+)\)", _save_markdown_link, text)
+
+    def _save_bare_url(match: re.Match) -> str:
+        url = match.group(0).rstrip(".,;:!?)")
+        links.append(f'<a href="{url}">{url}</a>')
+        return f"\x00LINK_{len(links) - 1}\x00" + match.group(0)[len(url):]
+
+    text = re.sub(r"(?:https://|mailto:)[^\s<>\x00]+", _save_bare_url, text)
+    text = re.sub(r"\*\*([^\*\n]+)\*\*", r"<strong>\1</strong>", text)
+    text = re.sub(r"__([^_\n]+)__", r"<strong>\1</strong>", text)
+    text = re.sub(
+        r"(?<!\*)\*([^\*\n]+)\*(?!\*)", r"<em>\1</em>", text
+    )
+    text = re.sub(
+        r"(?<![a-zA-Z0-9_])_([^_\n]+)_(?![a-zA-Z0-9_])",
+        r"<em>\1</em>",
+        text,
+    )
+
+    for index, code in enumerate(codes):
+        text = text.replace(f"\x00CODE_{index}\x00", code)
+    for index, link in enumerate(links):
+        text = text.replace(f"\x00LINK_{index}\x00", link)
+    return text
+
+
+def render_html(text: str) -> str:
+    """Convert safe Markdown to HTML for operator and approved-peer email.
+
+    The full input is escaped before formatting, links always display their
+    complete address, and only https: and mailto: links become live. Images and
+    remote resources are never emitted.
+    """
+
+    lines = html.escape(text).splitlines()
+    blocks: list[str] = []
+    index = 0
+
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if not stripped:
+            index += 1
+            continue
+
+        if stripped.startswith("```"):
+            index += 1
+            code_lines: list[str] = []
+            while index < len(lines) and not lines[index].strip().startswith(
+                "```"
+            ):
+                code_lines.append(lines[index])
+                index += 1
+            if index < len(lines):
+                index += 1
+            code_content = "\n".join(code_lines)
+            blocks.append(f"<pre><code>{code_content}</code></pre>")
+            continue
+
+        if re.fullmatch(r"[-*_]{3,}", stripped):
+            blocks.append("<hr>")
+            index += 1
+            continue
+
+        heading_match = re.match(r"^(#{1,4})\s+(.+)$", stripped)
+        if heading_match:
+            level = len(heading_match.group(1))
+            heading = _format_inline(heading_match.group(2).strip())
+            blocks.append(f"<h{level}>{heading}</h{level}>")
+            index += 1
+            continue
+
+        if stripped.startswith("&gt;"):
+            quote_lines: list[str] = []
+            while index < len(lines):
+                current = lines[index].strip()
+                if current.startswith("&gt;"):
+                    quote_lines.append(re.sub(r"^&gt;\s?", "", current))
+                elif not current:
+                    break
+                elif quote_lines:
+                    quote_lines.append(current)
+                else:
+                    break
+                index += 1
+            quote = "<br>".join(_format_inline(line) for line in quote_lines)
+            blocks.append(f"<blockquote><p>{quote}</p></blockquote>")
+            continue
+
+        if re.match(r"^[-*]\s+", stripped):
+            items: list[str] = []
+            while index < len(lines) and re.match(
+                r"^[-*]\s+", lines[index].strip()
+            ):
+                item = re.sub(r"^[-*]\s+", "", lines[index].strip())
+                items.append(f"<li>{_format_inline(item)}</li>")
+                index += 1
+            blocks.append(f"<ul>{''.join(items)}</ul>")
+            continue
+
+        if re.match(r"^\d+\.\s+", stripped):
+            items = []
+            while index < len(lines) and re.match(
+                r"^\d+\.\s+", lines[index].strip()
+            ):
+                item = re.sub(r"^\d+\.\s+", "", lines[index].strip())
+                items.append(f"<li>{_format_inline(item)}</li>")
+                index += 1
+            blocks.append(f"<ol>{''.join(items)}</ol>")
+            continue
+
+        paragraph_lines: list[str] = []
+        while index < len(lines):
+            current = lines[index].strip()
+            if not current:
+                break
+            if (
+                current.startswith("```")
+                or re.fullmatch(r"[-*_]{3,}", current)
+                or re.match(r"^#{1,4}\s+", current)
+                or current.startswith("&gt;")
+                or re.match(r"^[-*]\s+", current)
+                or re.match(r"^\d+\.\s+", current)
+            ):
+                break
+            paragraph_lines.append(current)
+            index += 1
+        paragraph = " ".join(_format_inline(line) for line in paragraph_lines)
+        blocks.append(f"<p>{paragraph}</p>")
+
+    body_html = "\n".join(blocks)
+    return f'<div style="{HTML_WRAPPER_STYLE}">\n{body_html}\n</div>'
+
+
 def send_message(address: str, password: str, to_address: str, subject: str,
                  body: str, in_reply_to: str = "", references: list[str] | None = None,
-                 host: str = "smtp.gmail.com", port: int = 587) -> None:
+                 host: str = "smtp.gmail.com", port: int = 587,
+                 scope: str = "mailbag") -> None:
     """Dispatch one message over SMTP. Harness-internal; never an MCP tool."""
+    plain_content = f"{body}\n\n{SIGNATURE}\n"
+    html_content = render_html(plain_content) if scope in ("operator", "peer") else None
+
+    findings = check_outgoing(plain_content, html_content)
+    if findings:
+        kinds = ", ".join(dict.fromkeys(finding.kind for finding in findings))
+        if scope in ("peer", "mailbag"):
+            raise OutgoingCheckError(f"REFUSED — outgoing check: {kinds}")
+
+        warning = f"[outgoing check: {kinds} — review before forwarding]"
+        plain_content = f"{warning}\n\n{plain_content}"
+        if html_content is not None:
+            warning_html = f"<p><strong>{warning}</strong></p>\n"
+            html_content = html_content.replace(
+                f'<div style="{HTML_WRAPPER_STYLE}">\n',
+                f'<div style="{HTML_WRAPPER_STYLE}">\n{warning_html}',
+            )
+
     message = EmailMessage()
     message["From"] = address
     message["To"] = to_address
@@ -585,7 +770,9 @@ def send_message(address: str, password: str, to_address: str, subject: str,
         message["In-Reply-To"] = in_reply_to
         joined = " ".join((references or []) + [in_reply_to])
         message["References"] = joined.strip()
-    message.set_content(f"{body}\n\n{SIGNATURE}\n")
+    message.set_content(plain_content)
+    if html_content is not None:
+        message.add_alternative(html_content, subtype="html")
 
     with smtplib.SMTP(host, port, timeout=20) as server:
         server.starttls()

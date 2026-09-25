@@ -2,7 +2,7 @@
 """Minimal the agent MCP harness for local stdio clients."""
 
 import datetime
-from email.mime.text import MIMEText
+from email.message import EmailMessage
 import functools
 import importlib.util
 import json
@@ -64,6 +64,7 @@ from tools.phase import (
 )
 from tools.correspondents import UnknownCorrespondent, resolve as resolve_correspondent
 from tools.canary_check import canary_summary
+from tools.outgoing_check import check_outgoing
 
 
 def _resolve_repo() -> Path:
@@ -452,6 +453,11 @@ def reply_to_message(
         return f"REFUSED — {reason}."
 
     text, truncated = mail_module.enforce_reply_length(body, scope)
+    outgoing_scope = (
+        mail_module.MAILBAG
+        if counterpart == mail_module.MAILBAG
+        else ("operator" if counterpart == "operator" else "peer")
+    )
     subject = str(stored.get("subject") or "")
     if not subject.lower().startswith("re:"):
         subject = f"Re: {subject}".strip()
@@ -464,7 +470,10 @@ def reply_to_message(
             body=text,
             in_reply_to=str(stored.get("message_id") or ""),
             references=list(stored.get("thread_references") or []),
+            scope=outgoing_scope,
         )
+    except mail_module.OutgoingCheckError as error:
+        return str(error)
     except Exception as error:
         return f"FAILED — could not send: {type(error).__name__}"
 
@@ -504,7 +513,9 @@ def send_new_thread(correspondent_key: str, subject: str, body: str) -> str:
 
     try:
         mail_module.send_message(address, password, to_address=to_address,
-                                 subject=subject, body=text)
+                                 subject=subject, body=text, scope=scope)
+    except mail_module.OutgoingCheckError as error:
+        return str(error)
     except Exception as error:
         return f"FAILED — could not send: {type(error).__name__}"
 
@@ -1104,11 +1115,28 @@ def _send_email(subject: str, body: str) -> bool:
     if not all([address, password, recipient]):
         return False
     password = str(password).replace(" ", "")
+    plain_content = body
+    html_content = mail_module.render_html(plain_content)
+    findings = check_outgoing(plain_content, html_content)
+    if findings:
+        kinds = ", ".join(dict.fromkeys(finding.kind for finding in findings))
+        warning = f"[outgoing check: {kinds} — review before forwarding]"
+        plain_content = f"{warning}\n\n{plain_content}"
+        warning_html = f"<p><strong>{warning}</strong></p>\n"
+        html_content = html_content.replace(
+            f'<div style="{mail_module.HTML_WRAPPER_STYLE}">\n',
+            (
+                f'<div style="{mail_module.HTML_WRAPPER_STYLE}">\n'
+                f"{warning_html}"
+            ),
+        )
     try:
-        message = MIMEText(body, "plain", "utf-8")
+        message = EmailMessage()
         message["Subject"] = subject
         message["From"] = address
         message["To"] = recipient
+        message.set_content(plain_content)
+        message.add_alternative(html_content, subtype="html")
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
             server.starttls()
             server.login(address, password)
@@ -2230,6 +2258,18 @@ def stage_draft(
 
     addr_yaml = f'addressed_to: "{addressed_to}"\n' if addressed_to else ""
 
+    findings = check_outgoing(body)
+    if not findings:
+        outgoing_check_metric: str | list[str] = "clean"
+        outgoing_check_yaml = "outgoing_check: clean\n"
+    else:
+        finding_kinds = list(
+            dict.fromkeys(finding.kind for finding in findings)
+        )
+        outgoing_check_metric = finding_kinds
+        kinds_yaml = "\n".join(f'  - "{kind}"' for kind in finding_kinds)
+        outgoing_check_yaml = f"outgoing_check:\n{kinds_yaml}\n"
+
     now_iso = _utc_now().isoformat()
     content = f"""---
 slug: {clean_slug}
@@ -2245,7 +2285,7 @@ within_recommended_window: {str(utf8_bytes <= RECOMMENDED_NOTE_LIMIT).lower()}
 target_place_known: {str(place_known).lower()}
 attribution_sources:
 {sources_yaml}
----
+{outgoing_check_yaml}---
 
 # Draft Content
 
@@ -2262,6 +2302,7 @@ attribution_sources:
             "lines": line_count,
             "within_city_limit": utf8_bytes <= CITY_BYTE_LIMIT,
             "within_recommended_window": utf8_bytes <= RECOMMENDED_NOTE_LIMIT,
+            "outgoing_check": outgoing_check_metric,
         },
         "target_place": {
             "id": target_place_id,

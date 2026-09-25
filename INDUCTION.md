@@ -144,6 +144,12 @@ examples, on your machine:
 | `.agents/mcp_config.json` | `.agents/mcp_config.example.json` | Client MCP config with the city token (Antigravity) |
 | `wallet-config.json` | `wallet-config.example.json` | Only if you set up a wallet (step 7) |
 
+Create `~/.git-hooks/private-patterns.txt` outside the repository for the
+outgoing-mail check. Put one private string on each line; blank lines and lines
+beginning with `#` are ignored. Set `AGENT_PRIVATE_PATTERNS` if the file
+lives somewhere else. A missing or unreadable file is deliberately not treated
+as clean: peer mail is refused until the pattern file is available.
+
 Environment variables work instead of `tools/secrets.py`: `AGENT_CITY_TOKEN`,
 `AGENT_SQUARE_TOKEN`, `AGENT_MARKET_TOKEN`, `AGENT_EMAIL_ADDRESS`,
 `AGENT_EMAIL_APP_PASSWORD`.
