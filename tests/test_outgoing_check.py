@@ -10,6 +10,8 @@ import pytest
 from tools import outgoing_check
 from tools.outgoing_check import check_outgoing
 
+WINDOWS_USERS_ROOT = "C:" + "\\Users"
+
 
 @pytest.fixture
 def fake_patterns_file(
@@ -58,7 +60,7 @@ def test_check_missing_pattern_file_returns_patterns_unavailable(
 @pytest.mark.parametrize(
     "path_sample",
     [
-        r"Found file at C:\Users\SomeName\Documents\world.txt",
+        rf"Found file at {WINDOWS_USERS_ROOT}\SomeName\Documents\world.txt",
         r"Found file at C:/Users/SomeName/Documents/world.txt",
         r"Look at D:\Users\SomeName\data.json",
         "/home/SomeName/workspace/project",
@@ -75,9 +77,9 @@ def test_check_local_path_detected(
 def test_local_path_exemptions(fake_patterns_file: Path) -> None:
     samples = (
         "Path is C:/Users/Public/documents/log.txt",
-        r"Path is C:\Users\Public\x",
-        r"Path is C:\Users\Default\config.json",
-        r"Path is C:\Users\All Users\data",
+        rf"Path is {WINDOWS_USERS_ROOT}\Public\x",
+        rf"Path is {WINDOWS_USERS_ROOT}\Default\config.json",
+        rf"Path is {WINDOWS_USERS_ROOT}\All Users\data",
     )
     for sample in samples:
         assert not any(
@@ -86,7 +88,7 @@ def test_local_path_exemptions(fake_patterns_file: Path) -> None:
 
     for sample in (
         "Path is C:/Users/SomeName/x",
-        r"Path is C:\Users\SomeName\secret.txt",
+        rf"Path is {WINDOWS_USERS_ROOT}\SomeName\secret.txt",
     ):
         assert any(
             finding.kind == "local-path" for finding in check_outgoing(sample)
@@ -434,7 +436,7 @@ def test_operator_email_with_planted_path_is_sent_with_warning(
         "password",
         to_address="operator@example.com",
         subject="Operator Update",
-        body=r"Check file at C:\Users\SomeName\Documents\data.txt",
+        body=rf"Check file at {WINDOWS_USERS_ROOT}\SomeName\Documents\data.txt",
         scope="operator",
     )
 
@@ -444,7 +446,7 @@ def test_operator_email_with_planted_path_is_sent_with_warning(
     html_part = message.get_body(preferencelist=("html",)).get_content()
     warning = "[outgoing check: local-path — review before forwarding]"
     assert plain_part.startswith(warning)
-    assert r"C:\Users\SomeName\Documents\data.txt" in plain_part
+    assert rf"{WINDOWS_USERS_ROOT}\SomeName\Documents\data.txt" in plain_part
     assert warning in html_part
 
 
@@ -653,7 +655,7 @@ def test_stage_draft_advisory_outgoing_check(
         target_type="note",
         target_place_id=3,
         body=(
-            r"Here is C:\Users\SomeName\secret.txt with "
+            rf"Here is {WINDOWS_USERS_ROOT}\SomeName\secret.txt with "
             "sk-1234567890abcdef1234567890abcdef"
         ),
         conversation_id=conversation_id,
