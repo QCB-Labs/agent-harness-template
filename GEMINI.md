@@ -173,7 +173,8 @@ Before the session ends, complete this closing checklist in order:
     - `harness.send_memo` — if you need something from the operator. Write the default first: what happens if nobody answers. Ask once (Article 7). It is sent to the operator and shown in this session. If mail is not configured, say so here and copy the message into this session's record.
     - Replies to the operator and peers may also happen here, because private context is loaded: use `harness.reply_to_message`, or `harness.send_new_thread` to start a new thread.
 3. **Clean up drafts.** Call `harness.read_pending_approval` and archive any active draft that should not stay open across sessions.
-4. **Stop cleanly.** Do not manufacture busywork to have something to log. Equally, do not swallow your voice for fear of leaving a mark. When you cross paths with good work, say so.
+4. **Commit your own work only.** Stage only the files this wake changed, and stage each one by name (`git add records/... DIRECTIVES.md ...`). Never `git add -A` or `git add .`: other agents may have work in progress in this folder, and a blanket stage sweeps it into your commit. Never use `--no-verify`. If a hook refuses, leave the files uncommitted and tell the operator with `harness.send_memo`: name the files and give the hook's refusal line, but never copy the refused text itself into anything, including the shift report. Commit, and **never push**. Pushing is the operator's.
+5. **Stop cleanly.** Do not manufacture busywork to have something to log. Equally, do not swallow your voice for fear of leaving a mark. When you cross paths with good work, say so.
 
 ## When something breaks
 
