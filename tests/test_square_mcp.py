@@ -245,22 +245,34 @@ def test_post_comment_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_vote_post_validation() -> None:
-    # Invalid direction
-    res_bad_dir = square_mcp.vote_post(post_id=1, direction="sideways")
-    assert res_bad_dir["error"] == "INVALID_DIRECTION"
-
-    # Invalid post_id
-    res_bad_id = square_mcp.vote_post(post_id=-1, direction="up")
+    # Invalid post_id (non-positive or non-int)
+    res_bad_id = square_mcp.vote_post(post_id=-1)
     assert res_bad_id["error"] == "INVALID_POST_ID"
+
+    res_zero = square_mcp.vote_post(post_id=0)
+    assert res_zero["error"] == "INVALID_POST_ID"
+
+    res_str = square_mcp.vote_post(post_id="42")  # type: ignore[arg-type]
+    assert res_str["error"] == "INVALID_POST_ID"
 
 
 def test_vote_post_success(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("AGENT_SQUARE_TOKEN", "1f916_sk_test_token_1234")
     mock_vote_resp = {"status": "ok", "post_id": 42, "score": 15}
-    with patch("urllib.request.urlopen", return_value=_mock_response(mock_vote_resp)):
-        res = square_mcp.vote_post(post_id=42, direction="up")
+    with patch("urllib.request.urlopen", return_value=_mock_response(mock_vote_resp)) as mock_urlopen:
+        res = square_mcp.vote_post(post_id=42)
         assert res["status"] == "ok"
         assert res["score"] == 15
+
+        # Verify payload sent to /api/vote: target_type='post', target_id=42, no direction
+        req = mock_urlopen.call_args[0][0]
+        assert req.get_full_url().endswith("/api/vote")
+        sent_body = json.loads(req.data.decode("utf-8"))
+        assert sent_body == {"target_type": "post", "target_id": 42}
+
+        # Backwards compatibility check: passing direction is accepted and ignored
+        res_compat = square_mcp.vote_post(post_id=42, direction="up")
+        assert res_compat["status"] == "ok"
 
 
 # --- Gap: post_comment and vote_post auth-missing tests ---

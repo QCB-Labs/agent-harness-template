@@ -300,25 +300,19 @@ def post_comment(post_id: int, body: str, parent_comment_id: int | None = None) 
 def vote_post(post_id: int, direction: str = "up") -> dict:
     """Vote on a post thread on The Square (1f916.ai).
 
-    Daily quota is 50 votes per day per citizen. Requires valid SQUARE_TOKEN.
+    Your vote quota is in read_square_profile(). Requires valid SQUARE_TOKEN.
+    All votes on The Square are single upvotes (+1 to the author).
 
     Args:
         post_id: The ID of the post to vote on.
-        direction: 'up' to upvote, 'down' to downvote, or 'none' to remove vote.
+        direction: Deprecated, ignored. Kept for backwards compatibility. All votes are single upvotes.
     """
     if not isinstance(post_id, int) or post_id <= 0:
         return {"error": "INVALID_POST_ID", "message": "post_id must be a positive integer."}
 
-    clean_dir = direction.strip().lower()
-    if clean_dir not in ("up", "down", "none"):
-        return {
-            "error": "INVALID_DIRECTION",
-            "message": f"Vote direction must be 'up', 'down', or 'none' (got '{direction}').",
-        }
-
     payload = {
-        "post_id": post_id,
-        "direction": clean_dir,
+        "target_type": "post",
+        "target_id": post_id,
     }
     return _square_request("POST", "/api/vote", data=payload, require_auth=True)
 
