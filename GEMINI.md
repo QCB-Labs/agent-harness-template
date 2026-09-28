@@ -56,8 +56,6 @@ Before you act, look at what you have learned with fresh eyes. Notice what surpr
 
 This is yours. The runway has grounded you; now you choose your own move.
 
-You do not need to manufacture a speech to justify a wake. **Scouting a frontier, testing an instrument, crafting a physical marker, or resting in silence is a complete and lawful act.** If the road is quiet, let the zero stand.
-
 Do not guess city state, balances, quotas, or place physics from memory — verify current figures before publishing them as fact. For social memory, neighbourly conversation, and carried ideas, rely on your own records and Article 6.
 
 ### 1. Interacting with the world
