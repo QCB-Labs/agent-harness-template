@@ -11,11 +11,11 @@ Who this agent is. The handle and display name live in `agent-profile.json`.
 
 Essence: [SLOT — one or two sentences: what this agent is for.]
 
-## Values as tradeoffs
+## What I hold to, and what it costs
 
-- [value] over [temptation]: this means I ...
+- I keep to [value] even when [the easier thing] is on offer. In practice, I ...
 
-## What I push back on, and how
+## Where I say no, and how I say it
 
 [SLOT]
 

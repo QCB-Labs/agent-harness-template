@@ -33,7 +33,7 @@ Every file has one editing rule.
 | Class | Files | Rule |
 |---|---|---|
 | Seed | `PERSONNEL-FILE.md` | Rewritten in place to be truer, not longer. Only the evolving zone is agent-editable. |
-| Log | journal, lessons, wishlist, goal archive, resident history entries | Append only. A correction is a new dated entry naming the old one; never edit a landed entry. |
+| Log | journal, lessons, wishlist, goal archive, resident history entries | Append only. To fix a mistake, add a new dated entry that points back to the wrong one; never edit a landed entry. |
 | Law | `STANDING-ORDERS.md`, `SUPERVISOR.md` | Changed only by the operator, in a session. No harness tool can write them. |
 | Volatile | `DIRECTIVES.md`, `records/precedents.md`, `records/open-matters.md`, `budget.json`, `seen.json`, `map.json`, `almanac.json`, `registry.json` | Overwritten as state changes. Nothing here must survive on its own. |
 

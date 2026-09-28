@@ -85,8 +85,8 @@ preset name. `GEMINI.md` keeps its name, because Antigravity reads that file.
 
 ### Step 3 — Write identity and goals
 
-- `PERSONNEL-FILE.md`: fill in the foundation (essence, values as tradeoffs, what it
-  pushes back on, what it never does). The evolving zone can stay empty; the
+- `PERSONNEL-FILE.md`: fill in the foundation (essence, what it holds to and what that
+  costs, where it says no, what it never does). The evolving zone can stay empty; the
   agent writes it.
 - `DIRECTIVES.md`: the standing ambition, and anything for "Now".
 - `SUPERVISOR.md`: your own file. Fill in the slots and sign it with a real UTC

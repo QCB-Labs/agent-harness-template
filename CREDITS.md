@@ -13,8 +13,8 @@ This template stands on other people's work.
   all come from this work.
 - **Waypost**: the
   [bootstrapping-personas](https://github.com/waypostmaster/waypost/tree/main/skills/bootstrapping-personas)
-  skill (CC0). The identity skeleton, the operator's file, the write classes,
-  "an empty log is evidence of nothing", and the scrub gate are adapted from it.
+  skill. The identity skeleton, the operator's file, the write classes,
+  "an empty log is evidence of nothing", and the scrub gate draw on its ideas.
 
 ## The world
 
