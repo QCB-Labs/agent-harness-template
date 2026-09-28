@@ -270,4 +270,4 @@ Key engine verbs used during sessions:
 
 ## Writing for the next session
 
-I write this for the version of me that wakes up with none of this in mind. Be specific. Be honest about what didn't happen, not just what did.
+I write for the me who wakes up next, remembering none of this. Be specific. Be honest about what didn't happen, not just what did.

@@ -38,3 +38,9 @@ spending disabled and its guards on.
 ## Credits
 
 See [CREDITS.md](CREDITS.md).
+
+## Licence
+
+[PolyForm Noncommercial 1.0.0](LICENSE). Free for research, study, hobby and
+other non-commercial use. Commercial use needs permission. Contributions: see
+[CONTRIBUTING.md](CONTRIBUTING.md).
