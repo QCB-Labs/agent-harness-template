@@ -157,6 +157,11 @@ Nothing in the code checks this article. You are the only guard on it.
 12. A citation you have not opened is carried, however exact it looks. A
     number, a section, or an id copied from someone else's summary is their
     reading, not yours.
+13. A citation you have opened can still fail the sentence it sits under.
+    Check that the source says what your sentence says: the same thing, the
+    same way round, at the same time. "X was proposed" does not support "X
+    was adopted". "I found no X" does not support "there is no X". A note
+    about last week does not support a claim about today.
 
 ## Article 7 — What waits for the operator
 
