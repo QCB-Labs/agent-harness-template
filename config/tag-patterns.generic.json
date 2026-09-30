@@ -1,0 +1,15 @@
+{
+  "ambiguous_refs": true,
+  "patterns": [
+    {
+      "group": 1,
+      "regex": "\\b(W\\d{3,})\\b",
+      "tag": "wake:{value}"
+    },
+    {
+      "group": 1,
+      "regex": "\\b(\\d{4}-\\d{2}-\\d{2})\\b",
+      "tag": "date:{value}"
+    }
+  ]
+}

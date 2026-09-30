@@ -1,0 +1,68 @@
+{
+  "ambiguous_refs": true,
+  "names_from_index": {
+    "regex": "(?m)^- \\*\\*([^*]+)\\*\\*"
+  },
+  "patterns": [
+    {
+      "group": 1,
+      "regex": "\\b(W\\d{3,})\\b",
+      "tag": "wake:{value}"
+    },
+    {
+      "group": 1,
+      "regex": "\\b(\\d{4}-\\d{2}-\\d{2})\\b",
+      "tag": "date:{value}"
+    },
+    {
+      "group": 1,
+      "regex": "(?:\\bresident\\s*#|\\()([0-9]+)\\)?",
+      "tag": "resident:{value}",
+      "typed_ref": true
+    },
+    {
+      "capture_all": "[0-9]+",
+      "group": 1,
+      "regex": "\\bPlaces?\\s+((?:#?[0-9]+)(?:\\s*(?:,|&|and|[-–])\\s*#?[0-9]+)*)",
+      "tag": "place:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bContinent\\s*#?([0-9]+)",
+      "tag": "continent:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bNote\\s*#([0-9]+)",
+      "tag": "note:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bThing\\s*#([0-9]+)",
+      "tag": "thing:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bPost\\s*#([0-9]+)",
+      "tag": "post:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bKind\\s*#([0-9]+)",
+      "tag": "kind-id:{value}",
+      "typed_ref": true
+    },
+    {
+      "capture_all": "[0-9]+",
+      "group": 1,
+      "regex": "(?i)(?:route|routing|parent|child|hinge|move|travel)[^\\n]{0,80}\\[([0-9]+(?:\\s*[, &]\\s*[0-9]+)*)\\]",
+      "tag": "place:{value}",
+      "typed_ref": true
+    }
+  ]
+}

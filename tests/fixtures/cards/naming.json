@@ -1,0 +1,13 @@
+{
+  "dirs": {"memory": "memory"},
+  "paths": {
+    "lessons": "{memory}/lessons.md",
+    "city_rules": "{memory}/city-rules.md",
+    "open_threads": "{memory}/open-threads.md",
+    "goals": "goals.md",
+    "continuity": "{memory}/continuity.md",
+    "journal": "{memory}/journal",
+    "residents": "{memory}/residents"
+  },
+  "indexes": {"residents": "memory/residents/index.md"}
+}
