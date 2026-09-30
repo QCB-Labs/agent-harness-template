@@ -909,6 +909,9 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
         names.tool("read_governance"),
         names.tool("read_operator"),
         names.tool("read_goals"),
+        names.tool("recall"),
+        names.tool("read_card"),
+        names.tool("read_wake_card"),
         names.tool("read_lessons"),
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
@@ -985,6 +988,9 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
         names.tool("read_governance"),
         names.tool("read_operator"),
         names.tool("read_goals"),
+        names.tool("recall"),
+        names.tool("read_card"),
+        names.tool("read_wake_card"),
         names.tool("read_lessons"),
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
@@ -1046,7 +1052,7 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py"):
+                   "outgoing_check.py", "cards.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
     (tools_dir / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "agent-profile.json", tmp_path / "agent-profile.json")
@@ -1574,7 +1580,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 55
+    assert len(tools) == 58
 
 
 

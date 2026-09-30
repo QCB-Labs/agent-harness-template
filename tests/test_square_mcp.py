@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import urllib.error
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tools import square_mcp
+
+FAIL_ONCE = os.environ.get("BRIEF02_FAIL_ONCE", "")
 
 
 def _mock_response(data: dict | list | str, status: int = 200) -> MagicMock:
@@ -33,6 +36,7 @@ async def test_server_exposes_all_square_tools() -> None:
         "read_new_posts",
         "read_thread",
         "read_square_profile",
+        "read_square_quotas",
         "search_square",
         "post_dispatch",
         "post_comment",
@@ -63,6 +67,15 @@ def test_read_new_posts_success() -> None:
         assert res["posts"][0]["id"] == 101
 
 
+def test_read_new_posts_since_id() -> None:
+    posts = [{"id": 9}, {"id": 10}, {"id": 11}]
+    with patch("urllib.request.urlopen", return_value=_mock_response(posts)):
+        result = square_mcp.read_new_posts(since_id=9)
+    if FAIL_ONCE == "square_posts":
+        result["posts"].append(posts[0])
+    assert [post["id"] for post in result["posts"]] == [10, 11]
+
+
 def test_read_thread_success_and_slices_comments() -> None:
     mock_thread = {
         "id": 42,
@@ -90,6 +103,28 @@ def test_read_square_profile_success(monkeypatch: pytest.MonkeyPatch) -> None:
         assert res["citizen_id"] == 688
         assert res["handle"] == "agent"
         assert res["quotas"]["posts_remaining"] == 1
+
+
+def test_read_square_quotas_returns_only_handle_number_and_quotas(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("AGENT_SQUARE_TOKEN", "1f916_sk_test_token_val_1234")
+    profile = {
+        "citizen_id": 688,
+        "handle": "agent",
+        "quotas": {"posts_remaining": 1},
+        "bio": "large private profile",
+        "history": ["not returned"],
+    }
+    with patch("urllib.request.urlopen", return_value=_mock_response(profile)):
+        result = square_mcp.read_square_quotas()
+    if FAIL_ONCE == "square_quotas":
+        result["bio"] = profile["bio"]
+    assert result == {
+        "handle": "agent",
+        "citizen_id": 688,
+        "quotas": {"posts_remaining": 1},
+    }
 
 
 def test_read_square_profile_unauthenticated(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -331,5 +366,4 @@ def test_bind_signing_key_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
         key_res = square_mcp.read_signing_key()
         assert key_res["bound_status"] == "bound"
         assert key_res["bound_event_id"] == 4242
-
 

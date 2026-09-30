@@ -144,11 +144,12 @@ def read_front_page(limit: int = 15) -> dict:
 
 
 @mcp.tool()
-def read_new_posts(limit: int = 10) -> dict:
+def read_new_posts(limit: int = 10, since_id: int | None = None) -> dict:
     """Read latest chronological posts and announcements from The Square (1f916.ai).
 
     Args:
         limit: Maximum number of new posts to return (default: 10).
+        since_id: Return only posts whose integer id is greater than this value.
     """
     res = _square_request("GET", "/api/new")
     if isinstance(res, dict) and "error" in res:
@@ -159,6 +160,11 @@ def read_new_posts(limit: int = 10) -> dict:
         posts = res
     elif isinstance(res, dict):
         posts = res.get("posts") or res.get("data") or []
+    if since_id is not None:
+        posts = [
+            post for post in posts
+            if isinstance(post, dict) and isinstance(post.get("id"), int) and post["id"] > since_id
+        ]
 
     return {
         "status": "ok",
@@ -198,6 +204,24 @@ def read_square_profile() -> dict:
     (posts, comments, votes). Requires valid SQUARE_TOKEN.
     """
     return _square_request("GET", "/api/me", require_auth=True)
+
+
+@mcp.tool()
+def read_square_quotas() -> dict:
+    """Read only the agent's Square handle, citizen number, and today's quotas."""
+    result = _square_request("GET", "/api/me", require_auth=True)
+    if isinstance(result, dict) and "error" in result:
+        return result
+    if not isinstance(result, dict):
+        return {"error": "MALFORMED_RESPONSE", "message": "Square profile was not an object."}
+    citizen = result.get("citizen_id")
+    if citizen is None:
+        citizen = result.get("citizen_number")
+    return {
+        "handle": result.get("handle"),
+        "citizen_id": citizen,
+        "quotas": result.get("quotas") or result.get("quotas_left") or {},
+    }
 
 
 @mcp.tool()

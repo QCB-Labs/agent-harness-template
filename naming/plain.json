@@ -30,7 +30,11 @@
     "open_threads": "# Open Threads",
     "works_index": "# Works index"
   },
-  "tools": {},
+  "tools": {
+    "recall": "recall",
+    "read_card": "read_card",
+    "read_wake_card": "read_wake_card"
+  },
   "wake_id": {
     "prefix": "W",
     "width": "3"

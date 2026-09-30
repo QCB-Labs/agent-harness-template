@@ -50,6 +50,7 @@ from tools.authority import session_active
 
 # Inbound mail: fetch, sanitise, classify, file. See tools/mail.py.
 from tools import mail as mail_module
+from tools import cards as cards_module
 from tools import names, profile
 from tools.credentials import get_agent_email
 from tools.phase import (
@@ -182,6 +183,28 @@ def _read_text(relative_path: Path, missing: str) -> str:
         return missing
 
 
+def _cards_patterns() -> Path:
+    configured = REPO / names.memory("cards") / "tag-patterns.json"
+    return configured if configured.is_file() else REPO / "config" / "tag-patterns.generic.json"
+
+
+def _recut_after_write(logical: str, path: Path) -> None:
+    """Best-effort read-half sync: source writes stand even if card sync fails."""
+    try:
+        cards_module.recut_file(REPO, REPO / "naming.json", _cards_patterns(), logical, path)
+    except Exception as error:
+        log_path = REPO / names.memory("cards") / "recut-errors.jsonl"
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        event = {
+            "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "logical": logical,
+            "file": path.relative_to(REPO).as_posix(),
+            "error": f"{type(error).__name__}: {error}",
+        }
+        with log_path.open("a", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(event, sort_keys=True) + "\n")
+
+
 @mcp.tool(name=names.tool("read_identity"))
 def read_identity() -> str:
     """Return the agent's complete identity document."""
@@ -204,6 +227,41 @@ def read_operator() -> str:
 def read_goals() -> str:
     """Return the agent's current goals document."""
     return _read_text(Path(names.rel("goals")), f"{names.rel('goals')} not found")
+
+
+@mcp.tool(name=names.tool("recall"))
+def recall(
+    tags: list[str],
+    text: str | None = None,
+    kinds: list[str] | None = None,
+    limit: int = 10,
+) -> dict[str, object]:
+    """Recall live memory cards by tags, optional text and kinds."""
+    return cards_module.recall(
+        REPO / names.dir_name("memory"),
+        tags=tags,
+        text=text,
+        kinds=kinds,
+        limit=limit,
+        config_path=REPO / "config" / "cards.json",
+    )
+
+
+@mcp.tool(name=names.tool("read_card"))
+def read_card(card_id: str, history: bool = False) -> dict[str, object]:
+    """Read one memory card, optionally with its append-only history."""
+    return cards_module.read_card(REPO / names.dir_name("memory"), card_id, history=history)
+
+
+@mcp.tool(name=names.tool("read_wake_card"))
+def read_wake_card(here_tags: list[str] = []) -> dict[str, object]:
+    """Read the five-section bounded wake card."""
+    return cards_module.read_wake_card(
+        REPO,
+        REPO / "naming.json",
+        config_path=REPO / "config" / "cards.json",
+        here_tags=here_tags,
+    )
 
 
 @mcp.tool(name=names.tool("read_lessons"))
@@ -790,6 +848,7 @@ def write_journal(content: str) -> str:
 
     budget["wake_count"] = wake_count
     _save_budget(budget)
+    _recut_after_write("journal", journal_path)
     relative_path = journal_path.relative_to(journal_dir).as_posix()
 
     # After-action report. Sent by the harness, not left to the model, and only
@@ -863,6 +922,7 @@ def update_goals(new_text: str) -> str:
         if not written:
             return refusal or "REFUSED — unsafe goals replacement."
     backup_note = f" Backup at {backup.name}." if backup else ""
+    _recut_after_write("goals", goals_path)
     return f"{names.rel('goals')} updated ({len(new_text)} chars).{backup_note}"
 
 
@@ -923,11 +983,13 @@ def _append_timestamped(path: Path, initial_text: str, text: str) -> None:
 @mcp.tool(name=names.tool("append_lesson"))
 def append_lesson(text: str) -> str:
     """Append a timestamped durable lesson."""
+    lesson_path = REPO / names.rel("lessons")
     _append_timestamped(
-        REPO / names.rel("lessons"),
+        lesson_path,
         "# Lessons Learned\n\n",
         text,
     )
+    _recut_after_write("lessons", lesson_path)
     return f"{Path(names.rel('lessons')).name} updated"
 
 
@@ -1817,6 +1879,8 @@ def upsert_resident(
         reg_data["updated_at"] = _utc_now().isoformat()
         _save_registry(reg_data)
 
+        _recut_after_write("residents", dossier_path)
+
     return f"Resident '{clean_handle}' updated: {', '.join(changes)}."
 
 
@@ -2433,6 +2497,7 @@ def update_open_threads(new_text: str) -> str:
         )
         if not written:
             return refusal or "REFUSED — unsafe open-threads replacement."
+    _recut_after_write("open_threads", threads_path)
     return f"{names.rel('open_threads')} updated ({len(new_text)} chars)."
 
 
@@ -2506,10 +2571,10 @@ def update_continuity(new_text: str) -> str:
         )
         if not written:
             return refusal or "REFUSED — unsafe continuity replacement."
+    _recut_after_write("continuity", cont_file)
     return f"{names.rel('continuity')} updated ({len(new_text)} chars)."
 
 
 if __name__ == "__main__":
     print(f"{profile.display_name()} harness repository: {REPO}", file=sys.stderr)
     mcp.run()
-

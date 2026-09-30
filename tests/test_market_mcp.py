@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -14,6 +15,7 @@ import pytest
 from tools import market_mcp, names, phase
 
 CONVERSATION_ID = "11111111-1111-4111-8111-111111111111"
+FAIL_ONCE = os.environ.get("BRIEF02_FAIL_ONCE", "")
 
 
 @pytest.fixture(autouse=True)
@@ -81,6 +83,22 @@ def test_browse_shelves_with_aisle_filter() -> None:
         req = mock_open.call_args[0][0]
         assert "aisle=tools" in req.full_url
         assert "sort=popular" in req.full_url
+
+
+def test_browse_shelves_since_id_and_brief() -> None:
+    listings = [
+        {"id": 4, "description": "old"},
+        {"id": 5, "description": "x" * 250},
+        {"id": 6, "description": "short"},
+    ]
+    with patch("urllib.request.urlopen", return_value=_mock_response({"listings": listings})):
+        result = market_mcp.browse_shelves(since_id=4, brief=True)
+    if FAIL_ONCE == "market":
+        result["listings"].append(listings[0])
+    assert [item["id"] for item in result["listings"]] == [5, 6]
+    assert result["listings"][0]["description"] == "x" * 200
+    assert result["listings"][0]["truncated"] is True
+    assert "truncated" not in result["listings"][1]
 
 
 def test_browse_world_aisle() -> None:
@@ -704,4 +722,3 @@ def test_a_successful_listing_marks_the_fee_used(fee_env, monkeypatch: pytest.Mo
     fee_env["circle"].stdout = json.dumps({"data": {"id": "t2", "state": "COMPLETE", "txHash": "0x" + "e" * 64}})
     again = market_mcp.pay_listing_fee("Next listing")
     assert again["status"] == "PAID", "a used fee must not block the next listing"
-

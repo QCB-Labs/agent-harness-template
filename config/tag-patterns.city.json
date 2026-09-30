@@ -16,8 +16,20 @@
     },
     {
       "group": 1,
-      "regex": "(?:\\bresident\\s*#|\\()([0-9]+)\\)?",
+      "regex": "(?:\\bresident(?:\\s+id)?\\s*[:#]\\s*|\\bresident[^\\n]{0,40}\\(#)([0-9]+)\\)?",
       "tag": "resident:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bSquare(?:\\s+citizen(?:\\s+id)?)?\\s*[:#]?\\s*#?([0-9]+)",
+      "tag": "square:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\b(?:Market|Bazaar)(?:\\s+merchant(?:\\s+id)?)?\\s*[:#]?\\s*#?([0-9]+)",
+      "tag": "market:{value}",
       "typed_ref": true
     },
     {

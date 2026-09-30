@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -170,6 +172,27 @@ class CardStore:
                 state[card["id"]] = card
         return state
 
+    def append_version(self, card: dict[str, Any], **changes: Any) -> dict[str, Any]:
+        """Append a complete new version of an existing card."""
+        forbidden = (SYSTEM_FIELDS - {"origin"}).intersection(changes)
+        if forbidden:
+            raise CardError("version changes may not set system field(s): " + ", ".join(sorted(forbidden)))
+        updated = dict(card)
+        updated.update(changes)
+        updated["updated_at"] = self.clock()
+        updated["tags"] = extract_tags(
+            kind=updated["kind"],
+            text=updated["text"],
+            title=updated.get("title"),
+            patterns=self.patterns,
+            name_index=self.name_index,
+        )
+        line = json.dumps(updated, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
+        with self.cards_path.open("a", encoding="utf-8", newline="") as handle:
+            handle.write(line)
+        self.rebuild_index()
+        return updated
+
     def rebuild_index(self) -> dict[str, Any]:
         ids: dict[str, int] = {}
         tags: dict[str, list[str]] = defaultdict(list)
@@ -219,6 +242,26 @@ def _segments(text: str, marker: re.Pattern[str], logical: str, path: Path) -> l
     return result
 
 
+def _continuity_segments(text: str, path: Path) -> list[tuple[int, str]]:
+    bullets = list(re.finditer(r"(?m)^- (?! )[^\r\n]+", text))
+    if not bullets:
+        raise MigrationFormatError(f"continuity: no valid cut marker in {path}")
+    starts = [0]
+    heading = re.compile(r"(?m)^#{2,3} [^\r\n]+")
+    for previous, current in zip(bullets, bullets[1:]):
+        headings = list(heading.finditer(text, previous.end(), current.start()))
+        starts.append(headings[0].start() if headings else current.start())
+    return [
+        (bullets[index].start(), text[starts[index]: starts[index + 1] if index + 1 < len(starts) else len(text)])
+        for index in range(len(bullets))
+    ]
+
+
+def _read_source_text(path: Path) -> str:
+    with Path(path).open("r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
 def _lesson_created_at(segment: str) -> str:
     match = re.search(r"(?m)^## (\d{4}-\d{2}-\d{2})(?:-(\d{2})(\d{2})(\d{2})?)?", segment)
     if not match:
@@ -241,11 +284,59 @@ def _thread_title(segment: str) -> str | None:
 
 
 def _resident_id(text: str) -> str | None:
-    for pattern in (r"(?i)resident\s*#(\d+)", r"\(#(\d+)\)", r"(?m)^#.*?\b#(\d+)\b"):
+    for pattern in (
+        r"(?im)^-\s*\*\*Resident ID:\*\*\s*(\d+)\s*$",
+        r"(?im)^#\s*Resident:[^\r\n]*?\(#(\d+)\)",
+        r"(?i)\bresident\s*#(\d+)",
+    ):
         match = re.search(pattern, text)
         if match:
             return match.group(1)
     return None
+
+
+def _pieces_for(logical: str, text: str, path: Path) -> list[tuple[int, str]]:
+    if logical == "lessons":
+        return _segments(text, re.compile(r"(?m)^## \d{4}-\d{2}-\d{2}[^\r\n]*"), logical, path)
+    if logical == "city_rules":
+        return _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)"), logical, path)
+    if logical == "open_threads":
+        return _segments(text, re.compile(r"(?m)^- \*\*.+?\*\*[^\r\n]*"), logical, path)
+    if logical == "goals":
+        return _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)"), logical, path)
+    if logical == "continuity":
+        return _continuity_segments(text, path)
+    if not text:
+        raise MigrationFormatError(f"{logical}: empty source file: {path}")
+    return [(0, text)]
+
+
+def _card_spec(logical: str, path: Path, text: str, position: int, segment: str) -> tuple[dict[str, Any], str, str | None]:
+    supplied: dict[str, Any] = {"text": segment}
+    created_at = None
+    wake = "migration"
+    if logical == "lessons":
+        body_length = len(segment.rstrip())
+        kind = "rule" if body_length < 400 and not re.search(r"(?m)^### ", segment) else "reflection"
+        supplied.update(kind=kind, status="recheck")
+        created_at = _lesson_created_at(segment)
+    elif logical == "city_rules":
+        supplied["kind"] = "rule"
+    elif logical == "open_threads":
+        supplied.update(kind="thread", title=_thread_title(segment))
+        resolved_offset = text.find("## Resolved threads")
+        if resolved_offset >= 0 and position >= resolved_offset:
+            supplied["status"] = "done"
+    elif logical == "goals":
+        supplied["kind"] = "goal"
+    elif logical == "continuity":
+        supplied["kind"] = "decision"
+    elif logical == "journal":
+        supplied["kind"] = "log"
+        wake = _wake_from_path(path)
+    else:
+        supplied["kind"] = "relationship"
+    return supplied, wake, created_at
 
 
 def _source_files(root: Path, logical: str, relative: str, excluded: str | None) -> list[Path]:
@@ -281,6 +372,7 @@ def migrate(
     store = CardStore(destination, Path(patterns_path), name_index=resident_index)
     cards: list[dict[str, Any]] = []
     lesson_reviews: list[tuple[str, str]] = []
+    migration_notes: list[str] = []
 
     for logical in LOGICAL_NAMES:
         relative = naming["paths"].get(logical)
@@ -290,53 +382,15 @@ def migrate(
         if not files:
             raise MigrationFormatError(f"{logical}: no source files under {relative}")
         for path in files:
-            text = path.read_text(encoding="utf-8")
+            text = _read_source_text(path)
             relative_path = path.relative_to(root).as_posix()
-            pieces: list[tuple[int, str]]
-            if logical == "lessons":
-                pieces = _segments(text, re.compile(r"(?m)^## \d{4}-\d{2}-\d{2}[^\r\n]*$"), logical, path)
-            elif logical == "city_rules":
-                pieces = _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^^\r\n].*)$"), logical, path)
-            elif logical == "open_threads":
-                pieces = _segments(text, re.compile(r"(?m)^- \*\*.+?\*\*.*$"), logical, path)
-            elif logical == "goals":
-                pieces = _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^^\r\n].*)$"), logical, path)
-            elif logical == "continuity":
-                pieces = _segments(text, re.compile(r"(?m)^#{2,3} [^\r\n]+$"), logical, path)
-            else:
-                if not text:
-                    raise MigrationFormatError(f"{logical}: empty source file: {relative_path}")
-                pieces = [(0, text)]
-
-            resolved_offset = text.find("## Resolved threads") if logical == "open_threads" else -1
+            pieces = _pieces_for(logical, text, path)
             for order, (position, segment) in enumerate(pieces, start=1):
                 origin = {"logical": logical, "file": relative_path, "position": position, "order": order}
-                supplied: dict[str, Any] = {"text": segment}
-                created_at = None
-                wake = "migration"
-                if logical == "lessons":
-                    body_length = len(segment.rstrip())
-                    kind = "rule" if body_length < 400 and not re.search(r"(?m)^### ", segment) else "reflection"
-                    supplied.update(kind=kind, status="recheck")
-                    created_at = _lesson_created_at(segment)
-                elif logical == "city_rules":
-                    supplied["kind"] = "rule"
-                elif logical == "open_threads":
-                    supplied.update(kind="thread", title=_thread_title(segment))
-                    if resolved_offset >= 0 and position >= resolved_offset:
-                        supplied["status"] = "done"
-                elif logical == "goals":
-                    supplied["kind"] = "goal"
-                elif logical == "continuity":
-                    supplied["kind"] = "decision"
-                elif logical == "journal":
-                    supplied["kind"] = "log"
-                    wake = _wake_from_path(path)
-                else:
-                    resident_id = _resident_id(text)
-                    if resident_id is None:
-                        raise MigrationFormatError(f"residents: no resident id in {relative_path}")
-                    supplied["kind"] = "relationship"
+                supplied, wake, created_at = _card_spec(logical, path, text, position, segment)
+                resident_id = _resident_id(text) if logical == "residents" else None
+                if logical == "residents" and resident_id is None:
+                    supplied["status"] = "recheck"
                 card = store.write(
                     supplied,
                     wake=wake,
@@ -346,7 +400,7 @@ def migrate(
                     created_at=created_at,
                 )
                 if logical == "residents":
-                    expected = f"resident:{resident_id}"
+                    expected = f"resident:{resident_id}" if resident_id else f"name:{path.stem.lower()}"
                     if expected not in card["tags"]:
                         card["tags"].append(expected)
                         card["tags"].sort()
@@ -354,6 +408,8 @@ def migrate(
                         with store.cards_path.open("a", encoding="utf-8", newline="") as handle:
                             handle.write(json.dumps(card, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
                         store.rebuild_index()
+                    if resident_id is None:
+                        migration_notes.append(f"- {relative_path}: resident ID missing; tagged `name:{path.stem.lower()}` and marked `recheck`.")
                 if logical == "lessons":
                     lesson_reviews.append((card["id"], card["kind"]))
                 cards.append(card)
@@ -362,6 +418,9 @@ def migrate(
     review_lines.extend(f"- [ ] `{card_id}` — proposed `{kind}`" for card_id, kind in lesson_reviews)
     cards_dir.mkdir(parents=True, exist_ok=True)
     (cards_dir / "kind-review.md").write_text("\n".join(review_lines) + "\n", encoding="utf-8", newline="")
+    report_lines = ["# Migration report", ""]
+    report_lines.extend(migration_notes or ["No migration issues."])
+    (cards_dir / "migration-report.md").write_text("\n".join(report_lines) + "\n", encoding="utf-8", newline="")
     return cards
 
 
@@ -382,7 +441,8 @@ def generate_views(cards_path: Path, destination_root: Path) -> list[Path]:
         target = Path(destination_root) / relative
         target.parent.mkdir(parents=True, exist_ok=True)
         ordered = sorted(cards, key=lambda card: card["origin"]["order"])
-        target.write_text("".join(card["text"] for card in ordered), encoding="utf-8", newline="")
+        with target.open("w", encoding="utf-8", newline="") as handle:
+            handle.write("".join(card["text"] for card in ordered))
         written.append(target)
     return written
 
@@ -397,10 +457,12 @@ def round_trip_differences(source_root: Path, generated_root: Path, files: Itera
     for relative in files:
         source = Path(source_root) / relative
         generated = Path(generated_root) / relative
-        left = normalized_lines(source)
-        right = normalized_lines(generated)
-        if left == right:
+        left_bytes = source.read_bytes()
+        right_bytes = generated.read_bytes()
+        if left_bytes == right_bytes:
             continue
+        left = _read_source_text(source).splitlines(keepends=True)
+        right = _read_source_text(generated).splitlines(keepends=True)
         limit = max(len(left), len(right))
         for line_number in range(limit):
             old = left[line_number] if line_number < len(left) else "<missing>"
@@ -409,3 +471,240 @@ def round_trip_differences(source_root: Path, generated_root: Path, files: Itera
                 differences.append(f"{relative}:{line_number + 1}: {old!r} != {new!r}")
                 break
     return differences
+
+
+def read_card(memory_root: Path, card_id: str, history: bool = False) -> dict[str, Any]:
+    memory_root = Path(memory_root)
+    versions: list[dict[str, Any]] = []
+    cards_path = memory_root / "cards" / "cards.jsonl"
+    if cards_path.is_file():
+        for line in cards_path.read_text(encoding="utf-8").splitlines():
+            card = json.loads(line)
+            if card["id"] == card_id:
+                versions.append(card)
+    if not versions:
+        return {"error": "NOT_FOUND", "id": card_id}
+    result: dict[str, Any] = {"card": versions[-1]}
+    if history:
+        result["history"] = versions
+    return result
+
+
+def _config(path: Path) -> dict[str, Any]:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def _tokens(text: str) -> int:
+    return math.ceil(len(text) / 4)
+
+
+def recall(
+    memory_root: Path,
+    *,
+    tags: list[str],
+    text: str | None = None,
+    kinds: list[str] | None = None,
+    limit: int = 10,
+    config_path: Path,
+    wake: str = "read",
+) -> dict[str, Any]:
+    memory = Path(memory_root)
+    store_path = memory / "cards" / "cards.jsonl"
+    state: dict[str, dict[str, Any]] = {}
+    for line in store_path.read_text(encoding="utf-8").splitlines() if store_path.is_file() else []:
+        card = json.loads(line)
+        state[card["id"]] = card
+    wanted = {tag.lower() for tag in tags}
+    needle = text.lower() if text else None
+    allowed = set(kinds) if kinds else None
+    matches = [
+        card for card in state.values()
+        if card.get("status") in {"live", "recheck"}
+        and (not wanted or wanted.intersection(card.get("tags", [])))
+        and (allowed is None or card["kind"] in allowed)
+        and (needle is None or needle in (card.get("title", "") + "\n" + card["text"]).lower())
+    ]
+    matches.sort(
+        key=lambda card: (
+            len(wanted.intersection(card.get("tags", []))),
+            float(card.get("weight", 0)),
+            card.get("updated_at", ""),
+        ),
+        reverse=True,
+    )
+    selected = matches[:max(0, limit)]
+    token_count = sum(_tokens(card["text"]) for card in selected)
+    budget = int(_config(config_path)["recall_tokens"])
+    refused = token_count > budget
+    returned = [] if refused else selected
+    result = {
+        "searched": {"tags": sorted(wanted), "text": text, "kinds": kinds, "limit": limit},
+        "matched": len(matches),
+        "left_out": len(matches) - len(returned),
+        "tokens": token_count,
+        "budget": budget,
+        "refused": refused,
+        "cards": returned,
+    }
+    if refused:
+        result["message"] = f"{len(selected)} cards require {token_count} tokens; narrow the query."
+    reads = memory / "cards" / "reads.jsonl"
+    reads.parent.mkdir(parents=True, exist_ok=True)
+    event = {"time": _utc_now(), "wake": wake, "query": result["searched"], "ids": [card["id"] for card in returned], "refused": refused}
+    with reads.open("a", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+    return result
+
+
+def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical: str, path: Path) -> dict[str, list[str]]:
+    root = Path(repo_root)
+    path = Path(path)
+    naming = load_naming(Path(naming_path))
+    memory = root / json.loads(Path(naming_path).read_text(encoding="utf-8")).get("dirs", {}).get("memory", "memory")
+    resident_index_rel = naming["indexes"].get("residents")
+    store = CardStore(memory, patterns_path, name_index=(root / resident_index_rel if resident_index_rel else None))
+    state = store._current_state()
+    relative = path.relative_to(root).as_posix()
+    existing = sorted(
+        [card for card in state.values() if card.get("origin", {}).get("logical") == logical and card.get("origin", {}).get("file") == relative],
+        key=lambda card: card["origin"]["order"],
+    )
+    source_text = _read_source_text(path)
+    pieces = _pieces_for(logical, source_text, path)
+    result = {"changed": [], "new": [], "removed": [], "unchanged": []}
+    prepared: list[tuple[dict[str, Any], str, str | None, dict[str, Any]]] = []
+    for index, (position, segment) in enumerate(pieces):
+        supplied, wake, created_at = _card_spec(logical, path, source_text, position, segment)
+        origin = {"logical": logical, "file": relative, "position": position, "order": index + 1}
+        prepared.append((supplied, wake, created_at, origin))
+
+    matcher = SequenceMatcher(
+        a=[card["text"] for card in existing],
+        b=[item[0]["text"] for item in prepared],
+        autojunk=False,
+    )
+
+    def add_new(item: tuple[dict[str, Any], str, str | None, dict[str, Any]]) -> None:
+        supplied, wake, created_at, origin = item
+        card = store.write(supplied, wake=wake, source="self", channel="migration", origin=origin, created_at=created_at)
+        result["new"].append(card["id"])
+
+    def remove_old(old: dict[str, Any]) -> None:
+        updated = store.append_version(old, status="done", status_reason="removed from source file")
+        result["removed"].append(updated["id"])
+
+    for opcode, old_start, old_end, new_start, new_end in matcher.get_opcodes():
+        if opcode == "equal":
+            for old, item in zip(existing[old_start:old_end], prepared[new_start:new_end]):
+                supplied, _, _, origin = item
+                desired_status = supplied.get("status", "live")
+                metadata_same = (
+                    old.get("title") == supplied.get("title")
+                    and old.get("status") == desired_status
+                    and old.get("origin") == origin
+                )
+                if not metadata_same:
+                    store.append_version(
+                        old,
+                        title=supplied.get("title"),
+                        status=desired_status,
+                        origin=origin,
+                    )
+                result["unchanged"].append(old["id"])
+        elif opcode == "replace":
+            old_items = existing[old_start:old_end]
+            new_items = prepared[new_start:new_end]
+            paired = min(len(old_items), len(new_items))
+            for offset in range(paired):
+                old = old_items[offset]
+                supplied, _, _, origin = new_items[offset]
+                updated = store.append_version(
+                    old,
+                    text=supplied["text"],
+                    title=supplied.get("title"),
+                    status=supplied.get("status", old["status"]),
+                    origin=origin,
+                )
+                result["changed"].append(updated["id"])
+            for item in new_items[paired:]:
+                add_new(item)
+            for old in old_items[paired:]:
+                remove_old(old)
+        elif opcode == "insert":
+            for item in prepared[new_start:new_end]:
+                add_new(item)
+        elif opcode == "delete":
+            for old in existing[old_start:old_end]:
+                remove_old(old)
+    return result
+
+
+def _fit_cards(cards: list[dict[str, Any]], budget: int) -> tuple[list[dict[str, Any]], int]:
+    chosen: list[dict[str, Any]] = []
+    used = 0
+    for card in cards:
+        cost = _tokens(card["text"])
+        if used + cost <= budget:
+            chosen.append(card)
+            used += cost
+    return chosen, len(cards) - len(chosen)
+
+
+def read_wake_card(
+    repo_root: Path,
+    naming_path: Path,
+    *,
+    config_path: Path,
+    here_tags: list[str] | None = None,
+) -> dict[str, Any]:
+    root = Path(repo_root)
+    raw_naming = json.loads(Path(naming_path).read_text(encoding="utf-8"))
+    dirs = raw_naming.get("dirs", {})
+    resolved = {key: value.format(**dirs) for key, value in raw_naming.get("paths", {}).items()}
+    memory = root / dirs.get("memory", "memory")
+    state: dict[str, dict[str, Any]] = {}
+    cards_path = memory / "cards" / "cards.jsonl"
+    for line in cards_path.read_text(encoding="utf-8").splitlines():
+        card = json.loads(line)
+        state[card["id"]] = card
+    cards = list(state.values())
+    cfg = _config(config_path)["wake_sections"]
+    identity = _read_source_text(root / resolved["identity"])
+    governance = _read_source_text(root / resolved["governance"])
+    handovers = [c for c in cards if c["kind"] == "handover" and c["status"] in {"live", "recheck"}]
+    handovers.sort(key=lambda c: c["updated_at"], reverse=True)
+    doing: list[dict[str, Any]] = handovers[:1]
+    if not doing:
+        logs = sorted((c for c in cards if c["kind"] == "log"), key=lambda c: c["updated_at"], reverse=True)
+        if logs:
+            fallback = dict(logs[0])
+            parts = re.split(r"(?m)(?=^#{1,6} )", fallback["text"])
+            fallback["text"] = parts[-1] if parts else fallback["text"]
+            doing.append(fallback)
+    doing.extend(c for c in cards if c["kind"] == "goal" and c["status"] == "live")
+    owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])
+    checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["updated_at"]), reverse=True)
+    wanted = {tag.lower() for tag in (here_tags or [])}
+    here = [
+        c for c in cards
+        if c["kind"] in {"thread", "relationship"} and c["status"] == "live"
+        and wanted.intersection(c.get("tags", []))
+    ]
+    groups = [
+        ("What I was doing", doing, int(cfg["what_i_was_doing"])),
+        ("What I owe", owing, int(cfg["what_i_owe"])),
+        ("What needs checking", checking, int(cfg["what_needs_checking"])),
+        ("What's here", here, int(cfg["whats_here"])),
+    ]
+    sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "tokens": _tokens(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
+    for name, candidates, budget in groups:
+        chosen, left = _fit_cards(candidates, budget)
+        body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
+        if left:
+            body += f"\n\n{left} more card(s) left out. Use recall with narrower tags or kinds."
+        sections.append({"name": name, "text": body, "tokens": _tokens(body), "shown": len(chosen), "left_out": left})
+    rendered = "\n\n".join(f"## {section['name']}\n\n{section['text']}" for section in sections)
+    # The text goes out once. Sections carry sizes and counts only, so the card
+    # doesn't cost twice its length in the agent's context.
+    summary = [{key: value for key, value in section.items() if key != "text"} for section in sections]
+    return {"text": rendered, "sections": summary, "total_budgeted_tokens": sum(section["tokens"] for section in sections[1:])}

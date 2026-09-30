@@ -194,6 +194,8 @@ def browse_shelves(
     aisle: str | None = None,
     sort: str = "new",
     limit: int = 15,
+    since_id: int | None = None,
+    brief: bool = False,
 ) -> dict:
     """Browse catalog shelves in the 1F3EA digital marketplace.
 
@@ -202,6 +204,8 @@ def browse_shelves(
                'prompts', 'services', or 'world' (physical city bridge).
         sort: Sorting order: 'new' (latest), 'popular', or 'price'.
         limit: Maximum number of listings to return (default: 15).
+        since_id: Return only listings whose integer id is greater than this value.
+        brief: Cut descriptions to 200 characters and mark only cut entries truncated.
     """
     params: list[str] = []
     if aisle:
@@ -221,6 +225,22 @@ def browse_shelves(
         listings = res
     elif isinstance(res, dict):
         listings = res.get("listings") or res.get("data") or []
+
+    if since_id is not None:
+        listings = [
+            item for item in listings
+            if isinstance(item, dict) and isinstance(item.get("id"), int) and item["id"] > since_id
+        ]
+    if brief:
+        compact: list[dict] = []
+        for listing in listings:
+            item = dict(listing)
+            description = item.get("description")
+            if isinstance(description, str) and len(description) > 200:
+                item["description"] = description[:200]
+                item["truncated"] = True
+            compact.append(item)
+        listings = compact
 
     return {
         "status": "ok",
