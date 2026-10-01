@@ -278,6 +278,24 @@ def test_recall_refuses_over_budget_and_logs_read(tmp_path: Path) -> None:
     assert (tmp_path / "cards" / "reads.jsonl").is_file()
 
 
+def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    first = _write(store, "a" * 80)
+    second = _write(store, "b" * 80)
+    config = tmp_path / "budget.json"
+    config.write_text(json.dumps({"recall_tokens": 25, "wake_sections": {}}), encoding="utf-8")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    assert result["refused"] is False
+    assert len(result["cards"]) == 1
+    assert result["cards"][0]["text"] in {"a" * 80, "b" * 80}
+    assert result["left_out"] == 1
+    left = result["left_out_cards"][0]["id"]
+    assert {left, result["cards"][0]["id"]} == {first["id"], second["id"]}
+    assert "read_card" in result["message"]
+    logged = json.loads((tmp_path / "cards" / "reads.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert logged["ids"] == [result["cards"][0]["id"]]
+
+
 def test_recall_does_not_change_cards_and_ranks_tags_weight_newest(tmp_path: Path) -> None:
     times = iter(("2026-09-30T10:00:00Z", "2026-09-30T11:00:00Z", "2026-09-30T12:00:00Z"))
     store = CardStore(tmp_path, GENERIC, clock=lambda: next(times))

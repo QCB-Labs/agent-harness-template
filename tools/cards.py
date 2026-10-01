@@ -593,19 +593,29 @@ def recall(
     selected = matches[:max(0, limit)]
     token_count = sum(_tokens(card["text"]) for card in selected)
     budget = int(_config(config_path)["recall_tokens"])
-    refused = token_count > budget
-    returned = [] if refused else selected
+    # Whole cards only, best match first. An over-budget answer returns what
+    # fits and names the rest; it is refused only when no card fits at all.
+    returned, _ = _fit_cards(selected, budget)
+    refused = bool(selected) and not returned
+    shown = {card["id"] for card in returned}
+    missing = [card for card in matches if card["id"] not in shown]
     result = {
         "searched": {"tags": sorted(wanted), "text": text, "kinds": kinds, "limit": limit},
         "matched": len(matches),
-        "left_out": len(matches) - len(returned),
-        "tokens": token_count,
+        "left_out": len(missing),
+        "left_out_cards": [{"id": card["id"], "kind": card["kind"], "title": card.get("title") or ""} for card in missing],
+        "tokens": sum(_tokens(card["text"]) for card in returned),
         "budget": budget,
         "refused": refused,
         "cards": returned,
     }
     if refused:
-        result["message"] = f"{len(selected)} cards require {token_count} tokens; narrow the query."
+        result["message"] = f"No card fits: the best match alone is over {budget} tokens. Read it with read_card(<id>)."
+    elif missing:
+        result["message"] = (
+            f"{len(missing)} matching card(s) left out ({token_count} tokens asked, {budget} allowed). "
+            "Read one with read_card(<id>), or narrow the tags or kinds."
+        )
     reads = memory / "cards" / "reads.jsonl"
     reads.parent.mkdir(parents=True, exist_ok=True)
     event = {"time": _utc_now(), "wake": wake, "query": result["searched"], "ids": [card["id"] for card in returned], "refused": refused}
