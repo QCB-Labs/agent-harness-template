@@ -58,3 +58,18 @@ def test_longer_number_is_not_mistaken_for_the_id(tmp_path):
 def test_unknown_name_with_a_number_stays_a_ref(tmp_path):
     found = tags(tmp_path, "Stranger (#77) passed through.")
     assert "ref:77" in found and "resident:77" not in found
+
+
+def test_accents_in_the_text_do_not_hide_a_handle(tmp_path):
+    index = TABLE + "| **orlabio** | 77 | stars | [`orlabio.md`](orlabio.md) |\r\n"
+    found = tags(tmp_path, "Orlábio (#77) left a chart.", index=index)
+    assert {"name:orlabio", "resident:77"} <= set(found)
+    assert "ref:77" not in found
+
+
+def test_square_dispatch_numbers_are_posts(tmp_path):
+    found = tags(tmp_path, "Stranger (#6144) on sightings.",
+                 title="Stranger & Other — Sightings (The Square, Dispatches #5991, #5996 & #6144)")
+    assert {"post:5991", "post:5996", "post:6144"} <= set(found)
+    assert not [tag for tag in found if tag.startswith("ref:")]
+    assert "post:5447" in tags(tmp_path, "See Dispatch #5447.")

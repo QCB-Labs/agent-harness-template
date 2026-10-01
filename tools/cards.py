@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
@@ -37,6 +38,10 @@ def _utc_now() -> str:
 
 def load_patterns(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _without_accents(text: str) -> str:
+    return "".join(ch for ch in unicodedata.normalize("NFKD", text) if not unicodedata.combining(ch))
 
 
 def extract_tags(
@@ -79,14 +84,17 @@ def extract_tags(
                 found_id = match.group(2) if match.re.groups > 1 else None
                 known[handle] = found_id or known.get(handle)
         id_tag = names.get("id_tag")
+        # An index handle is plain letters; the text may write the same name
+        # with accents. Compare both without them.
+        plain = _without_accents(haystack)
         for handle, known_id in known.items():
-            mention = rf"(?<![\w-]){re.escape(handle)}(?![\w-])"
-            if not re.search(mention, haystack, re.IGNORECASE):
+            mention = rf"(?<![\w-]){re.escape(_without_accents(handle))}(?![\w-])"
+            if not re.search(mention, plain, re.IGNORECASE):
                 continue
             tags.add(f"name:{handle}")
             # The index's own ID written right beside the handle is that ID's
             # type. Any other number beside the name stays an untyped ref.
-            if id_tag and known_id and re.search(rf"{mention}\W{{0,3}}#{known_id}(?!\d)", haystack, re.IGNORECASE):
+            if id_tag and known_id and re.search(rf"{mention}\W{{0,3}}#{known_id}(?!\d)", plain, re.IGNORECASE):
                 tags.add(id_tag.format(value=known_id).lower())
                 typed_refs.add(known_id)
 
