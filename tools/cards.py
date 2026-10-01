@@ -650,6 +650,52 @@ def _fit_cards(cards: list[dict[str, Any]], budget: int) -> tuple[list[dict[str,
     return chosen, len(cards) - len(chosen)
 
 
+def _file_order(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cards in the order their source file holds them.
+
+    A migrated card's updated_at is the time of the migration, not the age of
+    the memory, so it can't order them. Cards written since (no origin file)
+    come first, newest first.
+    """
+    fresh = [c for c in cards if not (c.get("origin") or {}).get("file")]
+    filed = [c for c in cards if (c.get("origin") or {}).get("file")]
+    fresh.sort(key=lambda c: c["updated_at"], reverse=True)
+    filed.sort(key=lambda c: (c["origin"]["file"], c["origin"].get("order", 0)))
+    return fresh + filed
+
+
+def _wake_added_section(name: str, candidates: list[dict[str, Any]], budget: int) -> dict[str, Any]:
+    """Fit whole entries, including separators and recall guidance in the budget."""
+    is_index = name == "Open threads (index)"
+    entries = []
+    for card in candidates:
+        if is_index:
+            tags = ", ".join(t for t in card.get("tags", []) if t.startswith(("resident:", "place:")))
+            entries.append(f"- {card['id']}: {card.get('title') or card['id']} [{tags}]")
+        else:
+            entries.append(card["text"])
+
+    def render(chosen: list[int]) -> str:
+        body = ("\n" if is_index else "\n\n").join(entries[i] for i in chosen) if chosen else "none"
+        if is_index:
+            body += "\nRecall a thread with read_card(<id>) or recall(tags=[...])."
+        missing = [candidates[i]["id"] for i in range(len(entries)) if i not in chosen]
+        if missing and is_index:
+            # Name them: an open thread that isn't listed must still be findable.
+            body += f"\n\n{len(missing)} more thread(s) not listed: {', '.join(missing)}. Read each with read_card(<id>)."
+        elif missing:
+            kind = {"Decisions": "decision", "Rules": "rule"}[name]
+            body += f'\n\n{len(missing)} more card(s) left out. Use recall(kinds=["{kind}"]) with narrower tags.'
+        return body
+
+    chosen: list[int] = []
+    for i in range(len(entries)):
+        if _tokens(render(chosen + [i])) <= budget:
+            chosen.append(i)
+    body = render(chosen)
+    return {"name": name, "text": body, "tokens": _tokens(body), "shown": len(chosen), "left_out": len(entries) - len(chosen)}
+
+
 def read_wake_card(
     repo_root: Path,
     naming_path: Path,
@@ -683,6 +729,9 @@ def read_wake_card(
             doing.append(fallback)
     doing.extend(c for c in cards if c["kind"] == "goal" and c["status"] == "live")
     owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])
+    threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
+    decisions = sorted((c for c in cards if c["kind"] == "decision" and c["status"] == "live"), key=lambda c: ((c.get("origin") or {}).get("file", ""), (c.get("origin") or {}).get("order", 0)))
+    rules = _file_order([c for c in cards if c["kind"] == "rule" and c["status"] == "live"])
     checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["updated_at"]), reverse=True)
     wanted = {tag.lower() for tag in (here_tags or [])}
     here = [
@@ -693,11 +742,17 @@ def read_wake_card(
     groups = [
         ("What I was doing", doing, int(cfg["what_i_was_doing"])),
         ("What I owe", owing, int(cfg["what_i_owe"])),
+        ("Open threads (index)", threads, int(cfg["thread_index"])),
+        ("Decisions", decisions, int(cfg["decisions"])),
+        ("Rules", rules, int(cfg["rules"])),
         ("What needs checking", checking, int(cfg["what_needs_checking"])),
         ("What's here", here, int(cfg["whats_here"])),
     ]
     sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "tokens": _tokens(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
     for name, candidates, budget in groups:
+        if name in {"Open threads (index)", "Decisions", "Rules"}:
+            sections.append(_wake_added_section(name, candidates, budget))
+            continue
         chosen, left = _fit_cards(candidates, budget)
         body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
         if left:

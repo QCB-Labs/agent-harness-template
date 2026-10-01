@@ -255,7 +255,7 @@ def read_card(card_id: str, history: bool = False) -> dict[str, object]:
 
 @mcp.tool(name=names.tool("read_wake_card"))
 def read_wake_card(here_tags: list[str] = []) -> dict[str, object]:
-    """Read the five-section bounded wake card."""
+    """Read the eight-section bounded wake card."""
     return cards_module.read_wake_card(
         REPO,
         REPO / "naming.json",

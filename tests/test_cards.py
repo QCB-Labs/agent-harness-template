@@ -293,7 +293,7 @@ def test_recall_does_not_change_cards_and_ranks_tags_weight_newest(tmp_path: Pat
     assert store.cards_path.read_bytes() == raw
 
 
-def test_read_wake_card_has_five_ordered_sections(tmp_path: Path) -> None:
+def test_read_wake_card_has_eight_ordered_sections(tmp_path: Path) -> None:
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
     (source / "SOUL.md").write_text("Identity whole.", encoding="utf-8")
@@ -304,7 +304,7 @@ def test_read_wake_card_has_five_ordered_sections(tmp_path: Path) -> None:
     (source / "naming.json").write_text(json.dumps(naming), encoding="utf-8")
     migrate(source, source / "naming.json", CITY, output_root=source / "memory")
     result = read_wake_card(source, source / "naming.json", config_path=ROOT / "config" / "cards.json", here_tags=["name:mira"])
-    section_names = ["## Who I am", "## What I was doing", "## What I owe", "## What needs checking", "## What's here"]
+    section_names = ["## Who I am", "## What I was doing", "## What I owe", "## Open threads (index)", "## Decisions", "## Rules", "## What needs checking", "## What's here"]
     headings = sorted(section_names, key=result["text"].index)
     expected = headings[:-1] if FAIL_ONCE == "wake" else headings
     assert expected == section_names
