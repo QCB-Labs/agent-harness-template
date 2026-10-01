@@ -67,15 +67,28 @@ def extract_tags(
                 if rule.get("typed_ref"):
                     typed_refs.add(normalized.lstrip("#"))
 
-    if patterns.get("names_from_index") and name_index and name_index.is_file():
+    names = patterns.get("names_from_index")
+    if names and name_index and name_index.is_file():
         index_text = name_index.read_text(encoding="utf-8")
-        candidates = {
-            value.lower()
-            for value in re.findall(patterns["names_from_index"]["regex"], index_text, re.IGNORECASE)
-        }
-        for handle in candidates:
-            if re.search(rf"(?<![\w-]){re.escape(handle)}(?![\w-])", haystack, re.IGNORECASE):
-                tags.add(f"name:{handle}")
+        # handle -> its ID in the index, or None. A line regex has one group
+        # (the handle) or two (handle, ID).
+        known: dict[str, str | None] = {}
+        for line_regex in names.get("regexes") or [names["regex"]]:
+            for match in re.finditer(line_regex, index_text, re.IGNORECASE):
+                handle = match.group(1).strip().lower()
+                found_id = match.group(2) if match.re.groups > 1 else None
+                known[handle] = found_id or known.get(handle)
+        id_tag = names.get("id_tag")
+        for handle, known_id in known.items():
+            mention = rf"(?<![\w-]){re.escape(handle)}(?![\w-])"
+            if not re.search(mention, haystack, re.IGNORECASE):
+                continue
+            tags.add(f"name:{handle}")
+            # The index's own ID written right beside the handle is that ID's
+            # type. Any other number beside the name stays an untyped ref.
+            if id_tag and known_id and re.search(rf"{mention}\W{{0,3}}#{known_id}(?!\d)", haystack, re.IGNORECASE):
+                tags.add(id_tag.format(value=known_id).lower())
+                typed_refs.add(known_id)
 
     if patterns.get("ambiguous_refs", True):
         for ref in re.findall(r"#(\d+)", haystack):
