@@ -87,5 +87,20 @@
       "tag": "post:{value}",
       "typed_ref": true
     }
-  ]
+  ],
+  "section_status": {
+    "city_rules": [
+      {
+        "heading": "^proposed",
+        "status": "recheck"
+      },
+      {
+        "heading": "^retracted",
+        "status": "done"
+      },
+      {
+        "skip": "^- [(]none yet"
+      }
+    ]
+  }
 }

@@ -332,7 +332,38 @@ def _pieces_for(logical: str, text: str, path: Path) -> list[tuple[int, str]]:
     return [(0, text)]
 
 
-def _card_spec(logical: str, path: Path, text: str, position: int, segment: str) -> tuple[dict[str, Any], str, str | None]:
+def _section_status(rules: list[dict[str, str]], text: str, position: int, segment: str) -> str | None:
+    """Status for an entry, from the heading of the section it sits under.
+
+    Headings themselves keep their status, so the shape of the file stays
+    visible even when every entry under a heading is withheld.
+    """
+    if re.match(r"#{1,6} ", segment):
+        return None
+    if any(rule.get("skip") and re.search(rule["skip"], segment, re.IGNORECASE) for rule in rules):
+        return None
+    headings = [m for m in re.finditer(r"(?m)^#{1,6} +([^\r\n]+)", text) if m.start() < position]
+    if not headings:
+        return None
+    heading = headings[-1].group(1).strip()
+    for rule in rules:
+        if "heading" in rule and re.search(rule["heading"], heading, re.IGNORECASE):
+            return rule["status"]
+    return None
+
+
+def _first_date(segment: str) -> str | None:
+    match = re.search(r"(\d{4}-\d{2}-\d{2})(?:-(\d{2})(\d{2})(\d{2})?)?", segment)
+    if not match:
+        return None
+    date, hour, minute, second = match.groups()
+    return f"{date}T{hour or '00'}:{minute or '00'}:{second or '00'}Z"
+
+
+def _card_spec(
+    logical: str, path: Path, text: str, position: int, segment: str,
+    section_status: dict[str, list[dict[str, str]]] | None = None,
+) -> tuple[dict[str, Any], str, str | None]:
     supplied: dict[str, Any] = {"text": segment}
     created_at = None
     wake = "migration"
@@ -343,6 +374,12 @@ def _card_spec(logical: str, path: Path, text: str, position: int, segment: str)
         created_at = _lesson_created_at(segment)
     elif logical == "city_rules":
         supplied["kind"] = "rule"
+        status = _section_status((section_status or {}).get(logical, []), text, position, segment)
+        if status:
+            supplied["status"] = status
+        # The entry's own date, where it wrote one: the migration's clock
+        # says nothing about how old a rule is.
+        created_at = _first_date(segment)
     elif logical == "open_threads":
         supplied.update(kind="thread", title=_thread_title(segment))
         resolved_offset = text.find("## Resolved threads")
@@ -408,7 +445,7 @@ def migrate(
             pieces = _pieces_for(logical, text, path)
             for order, (position, segment) in enumerate(pieces, start=1):
                 origin = {"logical": logical, "file": relative_path, "position": position, "order": order}
-                supplied, wake, created_at = _card_spec(logical, path, text, position, segment)
+                supplied, wake, created_at = _card_spec(logical, path, text, position, segment, store.patterns.get("section_status"))
                 resident_id = _resident_id(text) if logical == "residents" else None
                 if logical == "residents" and resident_id is None:
                     supplied["status"] = "recheck"
@@ -595,7 +632,7 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
     result = {"changed": [], "new": [], "removed": [], "unchanged": []}
     prepared: list[tuple[dict[str, Any], str, str | None, dict[str, Any]]] = []
     for index, (position, segment) in enumerate(pieces):
-        supplied, wake, created_at = _card_spec(logical, path, source_text, position, segment)
+        supplied, wake, created_at = _card_spec(logical, path, source_text, position, segment, store.patterns.get("section_status"))
         origin = {"logical": logical, "file": relative, "position": position, "order": index + 1}
         prepared.append((supplied, wake, created_at, origin))
 
@@ -753,7 +790,11 @@ def read_wake_card(
     threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
     decisions = sorted((c for c in cards if c["kind"] == "decision" and c["status"] == "live"), key=lambda c: ((c.get("origin") or {}).get("file", ""), (c.get("origin") or {}).get("order", 0)))
     rules = _file_order([c for c in cards if c["kind"] == "rule" and c["status"] == "live"])
-    checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["updated_at"]), reverse=True)
+    checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["created_at"]), reverse=True)
+    withheld_rules = {
+        status: sum(1 for c in cards if c["kind"] == "rule" and c["status"] == status)
+        for status in ("recheck", "done")
+    }
     wanted = {tag.lower() for tag in (here_tags or [])}
     here = [
         c for c in cards
@@ -772,7 +813,16 @@ def read_wake_card(
     sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "tokens": _tokens(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
     for name, candidates, budget in groups:
         if name in {"Open threads (index)", "Decisions", "Rules"}:
-            sections.append(_wake_added_section(name, candidates, budget))
+            section = _wake_added_section(name, candidates, budget)
+            if name == "Rules" and any(withheld_rules.values()):
+                note = (
+                    f"\n\nNot shown here: {withheld_rules['recheck']} rule card(s) waiting to be checked "
+                    f"and {withheld_rules['done']} closed. They are not confirmed. "
+                    'Find them with recall(kinds=["rule"]) or read_card(<id>).'
+                )
+                section["text"] += note
+                section["tokens"] = _tokens(section["text"])
+            sections.append(section)
             continue
         chosen, left = _fit_cards(candidates, budget)
         body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
