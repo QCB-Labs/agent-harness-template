@@ -901,7 +901,7 @@ def test_read_wallet_config_returns_safe_default_when_missing(
 
 
 @pytest.mark.asyncio
-async def test_server_exposes_ticket_one_plus_write_journal() -> None:
+async def test_server_exposes_exactly_its_registered_tools() -> None:
     tools = await harness_mcp.mcp.list_tools()
 
     assert [tool.name for tool in tools] == [
@@ -977,7 +977,7 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Path) -> None:
+async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     expected = (
         "# Protocol fixture\n\nImmutable start.\n"
         "<!-- BEGIN EVOLVING -->\n\nOld protocol state.\n\n"

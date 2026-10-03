@@ -38,6 +38,7 @@ for _stream in (sys.stdout, sys.stderr):
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from tools import credentials, names, profile
+from tools.official_facts import official_view
 from tools.phase import enters_private
 
 mcp = FastMCP("agent-market")
@@ -282,6 +283,25 @@ def read_merchant_profile() -> dict:
     Requires valid MARKET_TOKEN.
     """
     return _market_request("GET", "/api/me", require_auth=True)
+
+
+@mcp.tool()
+def read_market_official(fields: list[str] | None = None) -> dict:
+    """Read the Market's own official facts: its fees, treasury, payment rules and limits.
+
+    This is the Market's record of how the Market works. Read it here rather
+    than relying on a note of your own; it changes. With no arguments you get
+    the whole record when it is short, or the short fields and the names of
+    the larger ones. Pass `fields` to read named fields in full.
+
+    Args:
+        fields: Names of fields to return in full, for example ["world"].
+    """
+    try:
+        facts = _read_market_official()
+    except Exception as error:
+        return {"error": "OFFICIAL_FACTS_UNAVAILABLE", "message": f"Could not read the Market's official facts: {error}"}
+    return official_view(facts, fields, source="1f3ea.com/api/official")
 
 
 @mcp.tool()
@@ -764,9 +784,9 @@ def create_world_draft(
     """Create a pending 1-hour draft on 1F3EA to sell an owned 1F3D9 city Thing.
 
     Step 1 of the 3-step World Aisle listing flow:
-    1. Call create_world_draft() -> get market_draft_id
+    1. Call create_world_draft (this tool) -> get market_draft_id
     2. In city: call city.list_world(thing_id, market_draft_id) -> get city_offer_id
-    3. Call activate_world_listing(draft_id, city_offer_id, fee_tx_hash)
+    3. Call activate_world_listing(draft_id=..., city_offer_id=..., fee_tx_hash=...)
 
     Args:
         thing_id: Integer ID of the active city thing you own.
@@ -865,7 +885,7 @@ def activate_world_listing(
     """Activate a world-aisle listing on 1F3EA after locking the thing in 1F3D9.
 
     Step 3 of the World Aisle listing flow:
-    Requires the draft_id from create_world_draft(), the city_offer_id from
+    Requires the draft_id from create_world_draft, the city_offer_id from
     city.list_world(), and optionally the fee_tx_hash proving the $1 USDC listing fee.
 
     Args:

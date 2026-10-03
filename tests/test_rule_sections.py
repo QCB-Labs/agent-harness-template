@@ -48,16 +48,16 @@ def test_rule_status_follows_its_section(tmp_path):
     assert by_text(rules, "Doors are always open")["status"] == "done"
 
 
-def test_headings_keep_their_place(tmp_path):
+def test_headings_are_structure_not_rules(tmp_path):
     _, rules = build(tmp_path)
     for heading in ("## Confirmed", "## Proposed (unverified)", "## Retracted (proven false)"):
         card = next(c for c in rules if c["text"].rstrip().endswith(heading))
-        assert card["status"] == "live"
+        assert card["status"] == "structure"
 
 
-def test_placeholder_line_is_not_something_to_check(tmp_path):
+def test_placeholder_line_is_structure(tmp_path):
     _, rules = build(tmp_path)
-    assert by_text(rules, "none yet")["status"] == "live"
+    assert by_text(rules, "none yet")["status"] == "structure"
 
 
 def test_rule_cards_carry_their_own_date(tmp_path):
@@ -72,7 +72,10 @@ def test_without_section_rules_every_rule_is_live(tmp_path):
     plain = tmp_path / "pack.json"
     plain.write_text(json.dumps(pack), encoding="utf-8")
     _, rules = build(tmp_path, patterns=plain)
-    assert {c["status"] for c in rules} == {"live"}
+    entries = [c for c in rules if c["status"] != "structure"]
+    assert {c["status"] for c in entries} == {"live"}
+    # the four rules and the placeholder, which only the section rules know to skip
+    assert len(entries) == 5
 
 
 def test_wake_card_shows_confirmed_rules_and_says_what_is_withheld(tmp_path):
@@ -81,7 +84,7 @@ def test_wake_card_shows_confirmed_rules_and_says_what_is_withheld(tmp_path):
     text = result["text"]
     body = text[text.index("## Rules\n\n"):text.index("\n\n## What needs checking")]
     assert "Stand in the room" in body
-    assert "## Proposed (unverified)" in body
+    assert "## Proposed (unverified)" not in body and "An introductory note" not in body
     assert "Measure before naming" not in body and "Doors are always open" not in body
     assert "waiting to be checked" in body and "1 closed" in body
     checking = text[text.index("## What needs checking"):text.index("\n\n## What's here")]

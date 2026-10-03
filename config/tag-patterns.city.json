@@ -91,6 +91,10 @@
   "section_status": {
     "city_rules": [
       {
+        "heading": "^how a rule",
+        "status": "structure"
+      },
+      {
         "heading": "^proposed",
         "status": "recheck"
       },

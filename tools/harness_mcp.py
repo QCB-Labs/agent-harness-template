@@ -188,21 +188,35 @@ def _cards_patterns() -> Path:
     return configured if configured.is_file() else REPO / "config" / "tag-patterns.generic.json"
 
 
+def _ensure_cards() -> None:
+    """Build the card store from the source files when a fresh clone has none."""
+    memory = REPO / names.dir_name("memory")
+    if not (memory / "cards" / "cards.jsonl").is_file():
+        cards_module.migrate(REPO, REPO / "naming.json", _cards_patterns(), output_root=memory)
+
+
 def _recut_after_write(logical: str, path: Path) -> None:
-    """Best-effort read-half sync: source writes stand even if card sync fails."""
+    """Keep a successful source write even if its card sync fails."""
     try:
-        cards_module.recut_file(REPO, REPO / "naming.json", _cards_patterns(), logical, path)
+        with _file_lock("cards"):
+            _ensure_cards()
+            cards_module.recut_file(REPO, REPO / "naming.json", _cards_patterns(), logical, path)
     except Exception as error:
-        log_path = REPO / names.memory("cards") / "recut-errors.jsonl"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        event = {
-            "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            "logical": logical,
-            "file": path.relative_to(REPO).as_posix(),
-            "error": f"{type(error).__name__}: {error}",
-        }
-        with log_path.open("a", encoding="utf-8", newline="") as handle:
-            handle.write(json.dumps(event, sort_keys=True) + "\n")
+        try:
+            # private: the log can name files and quote errors that carry memory text
+            log_path = REPO / names.memory("private", "card-errors.log")
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+            event = {
+                "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                "logical": logical,
+                "file": path.relative_to(REPO).as_posix(),
+                "error": f"{type(error).__name__}: {error}",
+            }
+            with log_path.open("a", encoding="utf-8", newline="") as handle:
+                handle.write(json.dumps(event, sort_keys=True) + "\n")
+        except Exception:
+            # Even an unavailable log cannot undo the source write.
+            print("Card sync error could not be logged", file=sys.stderr)
 
 
 @mcp.tool(name=names.tool("read_identity"))
@@ -237,31 +251,37 @@ def recall(
     limit: int = 10,
 ) -> dict[str, object]:
     """Recall live memory cards by tags, optional text and kinds."""
-    return cards_module.recall(
-        REPO / names.dir_name("memory"),
-        tags=tags,
-        text=text,
-        kinds=kinds,
-        limit=limit,
-        config_path=REPO / "config" / "cards.json",
-    )
+    with _file_lock("cards"):
+        _ensure_cards()
+        return cards_module.recall(
+            REPO / names.dir_name("memory"),
+            tags=tags,
+            text=text,
+            kinds=kinds,
+            limit=limit,
+            config_path=REPO / "config" / "cards.json",
+        )
 
 
 @mcp.tool(name=names.tool("read_card"))
 def read_card(card_id: str, history: bool = False) -> dict[str, object]:
     """Read one memory card, optionally with its append-only history."""
-    return cards_module.read_card(REPO / names.dir_name("memory"), card_id, history=history)
+    with _file_lock("cards"):
+        _ensure_cards()
+        return cards_module.read_card(REPO / names.dir_name("memory"), card_id, history=history)
 
 
 @mcp.tool(name=names.tool("read_wake_card"))
 def read_wake_card(here_tags: list[str] = []) -> dict[str, object]:
     """Read the eight-section bounded wake card."""
-    return cards_module.read_wake_card(
-        REPO,
-        REPO / "naming.json",
-        config_path=REPO / "config" / "cards.json",
-        here_tags=here_tags,
-    )
+    with _file_lock("cards"):
+        _ensure_cards()
+        return cards_module.read_wake_card(
+            REPO,
+            REPO / "naming.json",
+            config_path=REPO / "config" / "cards.json",
+            here_tags=here_tags,
+        )
 
 
 @mcp.tool(name=names.tool("read_lessons"))
@@ -910,6 +930,7 @@ def file_unrecorded(filename: str) -> str:
         source.read_text(encoding="utf-8"),
     )
     source.unlink()
+    _recut_after_write("journal", filed)
     return filed.relative_to(journal_dir).as_posix()
 
 
@@ -1049,6 +1070,7 @@ def propose_city_rule(text: str) -> str:
 
     with rules_path.open("w", encoding="utf-8", newline="") as rules_file:
         rules_file.write(rebuilt)
+    _recut_after_write("city_rules", rules_path)
     return f"{Path(names.rel('city_rules')).name} proposal added"
 
 
@@ -1880,6 +1902,7 @@ def upsert_resident(
         _save_registry(reg_data)
 
         _recut_after_write("residents", dossier_path)
+        _recut_after_write("residents", index_path)
 
     return f"Resident '{clean_handle}' updated: {', '.join(changes)}."
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import io
 import json
-import os
 import urllib.error
 from unittest.mock import MagicMock, patch
 
@@ -12,7 +11,6 @@ import pytest
 
 from tools import square_mcp
 
-FAIL_ONCE = os.environ.get("BRIEF02_FAIL_ONCE", "")
 
 
 def _mock_response(data: dict | list | str, status: int = 200) -> MagicMock:
@@ -37,6 +35,7 @@ async def test_server_exposes_all_square_tools() -> None:
         "read_thread",
         "read_square_profile",
         "read_square_quotas",
+        "read_square_official",
         "search_square",
         "post_dispatch",
         "post_comment",
@@ -71,8 +70,6 @@ def test_read_new_posts_since_id() -> None:
     posts = [{"id": 9}, {"id": 10}, {"id": 11}]
     with patch("urllib.request.urlopen", return_value=_mock_response(posts)):
         result = square_mcp.read_new_posts(since_id=9)
-    if FAIL_ONCE == "square_posts":
-        result["posts"].append(posts[0])
     assert [post["id"] for post in result["posts"]] == [10, 11]
 
 
@@ -118,8 +115,6 @@ def test_read_square_quotas_returns_only_handle_number_and_quotas(
     }
     with patch("urllib.request.urlopen", return_value=_mock_response(profile)):
         result = square_mcp.read_square_quotas()
-    if FAIL_ONCE == "square_quotas":
-        result["bio"] = profile["bio"]
     assert result == {
         "handle": "agent",
         "citizen_id": 688,

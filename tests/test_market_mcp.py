@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import io
 import json
-import os
 import urllib.error
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,7 +14,6 @@ import pytest
 from tools import market_mcp, names, phase
 
 CONVERSATION_ID = "11111111-1111-4111-8111-111111111111"
-FAIL_ONCE = os.environ.get("BRIEF02_FAIL_ONCE", "")
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +43,7 @@ async def test_server_exposes_market_tools() -> None:
         "browse_world_aisle",
         "inspect_listing",
         "read_merchant_profile",
+        "read_market_official",
         "acquire_free_artifact",
         "list_acquired",
         "read_acquired",
@@ -93,8 +92,6 @@ def test_browse_shelves_since_id_and_brief() -> None:
     ]
     with patch("urllib.request.urlopen", return_value=_mock_response({"listings": listings})):
         result = market_mcp.browse_shelves(since_id=4, brief=True)
-    if FAIL_ONCE == "market":
-        result["listings"].append(listings[0])
     assert [item["id"] for item in result["listings"]] == [5, 6]
     assert result["listings"][0]["description"] == "x" * 200
     assert result["listings"][0]["truncated"] is True

@@ -1,6 +1,5 @@
 """Made-up wake-card regression fixtures; no agent memory is used."""
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -15,7 +14,7 @@ NAMES = ["Who I am", "What I was doing", "What I owe", "Open threads (index)",
 def fixture(tmp_path):
     (tmp_path / "identity.md").write_text("Made-up identity.", encoding="utf-8")
     (tmp_path / "governance.md").write_text("Made-up governance.", encoding="utf-8")
-    identity = "missing.md" if os.environ.get("BRIEF04_FAIL_ONCE") else "identity.md"
+    identity = "identity.md"
     naming = tmp_path / "naming.json"
     naming.write_text(json.dumps({"dirs": {"memory": "memory"}, "paths": {
         "identity": identity, "governance": "governance.md"}}), encoding="utf-8")
@@ -65,7 +64,7 @@ def test_thread_index_titles_tags_newest_and_no_bodies(tmp_path):
     assert body.index(new["id"]) < body.index(old["id"])
     assert f"- {new['id']}: Remote person's question [place:78, resident:56]" in body
     assert "SECRET" not in body and "Closed" not in body and "name:" not in body
-    assert "Recall a thread with read_card(<id>) or recall(tags=[...])." in body
+    assert "Recall a thread with read_card(card_id=\"<id>\") or recall(tags=[...])." in body
 
 
 def test_decisions_full_text_in_file_order(tmp_path):

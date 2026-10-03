@@ -352,6 +352,27 @@ def _section_status(rules: list[dict[str, str]], text: str, position: int, segme
     return None
 
 
+def _is_structure(logical: str, rules: list[dict[str, str]], text: str, position: int, segment: str) -> bool:
+    """True for a piece that holds the file's shape and no entry of its own.
+
+    Such a piece is still a card, because the cards must rebuild the file
+    byte for byte, but it is never shown as a rule or returned by recall.
+    """
+    if logical == "lessons":
+        return not any(line.strip() and not line.startswith("#") for line in segment.splitlines())
+    if logical == "city_rules":
+        if any(rule.get("skip") and re.search(rule["skip"], segment, re.IGNORECASE) for rule in rules):
+            return True
+        if not re.search(r"(?m)^## ", text):
+            # a rulebook with no sections: only a piece with no bullet is structure
+            return not re.search(r"(?m)^- ", segment)
+        if re.match(r"#{1,6} ", segment):
+            return True
+        # bullets above the first section heading explain the file; they are not entries
+        return not re.search(r"(?m)^## ", text[:position])
+    return False
+
+
 def _first_date(segment: str) -> str | None:
     match = re.search(r"(\d{4}-\d{2}-\d{2})(?:-(\d{2})(\d{2})(\d{2})?)?", segment)
     if not match:
@@ -371,10 +392,15 @@ def _card_spec(
         body_length = len(segment.rstrip())
         kind = "rule" if body_length < 400 and not re.search(r"(?m)^### ", segment) else "reflection"
         supplied.update(kind=kind, status="recheck")
+        if _is_structure(logical, [], text, position, segment):
+            supplied["status"] = "structure"
         created_at = _lesson_created_at(segment)
     elif logical == "city_rules":
         supplied["kind"] = "rule"
-        status = _section_status((section_status or {}).get(logical, []), text, position, segment)
+        rules = (section_status or {}).get(logical, [])
+        status = _section_status(rules, text, position, segment)
+        if _is_structure(logical, rules, text, position, segment):
+            status = "structure"
         if status:
             supplied["status"] = status
         # The entry's own date, where it wrote one: the migration's clock
@@ -468,7 +494,7 @@ def migrate(
                         store.rebuild_index()
                     if resident_id is None:
                         migration_notes.append(f"- {relative_path}: resident ID missing; tagged `name:{path.stem.lower()}` and marked `recheck`.")
-                if logical == "lessons":
+                if logical == "lessons" and card["status"] != "structure":
                     lesson_reviews.append((card["id"], card["kind"]))
                 cards.append(card)
 
@@ -610,13 +636,13 @@ def recall(
         "cards": returned,
     }
     if refused:
-        result["message"] = f"No card fits: the best match alone is over {budget} tokens. Read it with read_card(<id>)."
+        result["message"] = f"No card fits: the best match alone is over {budget} tokens. Read it with read_card(card_id=\"<id>\")."
     elif missing:
         result["message"] = (
             f"{len(missing)} matching card(s) left out ({token_count} tokens asked, {budget} allowed). "
-            "Read one with read_card(<id>), or narrow the tags or kinds."
+            "Read one with read_card(card_id=\"<id>\"), or narrow the tags or kinds."
         )
-    reads = memory / "cards" / "reads.jsonl"
+    reads = memory / "private" / "card-reads.jsonl"
     reads.parent.mkdir(parents=True, exist_ok=True)
     event = {"time": _utc_now(), "wake": wake, "query": result["searched"], "ids": [card["id"] for card in returned], "refused": refused}
     with reads.open("a", encoding="utf-8", newline="") as handle:
@@ -634,7 +660,12 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
     state = store._current_state()
     relative = path.relative_to(root).as_posix()
     existing = sorted(
-        [card for card in state.values() if card.get("origin", {}).get("logical") == logical and card.get("origin", {}).get("file") == relative],
+        [
+            card for card in state.values()
+            if card.get("origin", {}).get("logical") == logical and card.get("origin", {}).get("file") == relative
+            # a card already removed from this file is not in it to be removed again
+            and card.get("status_reason") != "removed from source file"
+        ],
         key=lambda card: card["origin"]["order"],
     )
     source_text = _read_source_text(path)
@@ -746,11 +777,11 @@ def _wake_added_section(name: str, candidates: list[dict[str, Any]], budget: int
     def render(chosen: list[int]) -> str:
         body = ("\n" if is_index else "\n\n").join(entries[i] for i in chosen) if chosen else "none"
         if is_index:
-            body += "\nRecall a thread with read_card(<id>) or recall(tags=[...])."
+            body += "\nRecall a thread with read_card(card_id=\"<id>\") or recall(tags=[...])."
         missing = [candidates[i]["id"] for i in range(len(entries)) if i not in chosen]
         if missing and is_index:
             # Name them: an open thread that isn't listed must still be findable.
-            body += f"\n\n{len(missing)} more thread(s) not listed: {', '.join(missing)}. Read each with read_card(<id>)."
+            body += f"\n\n{len(missing)} more thread(s) not listed: {', '.join(missing)}. Read each with read_card(card_id=\"<id>\")."
         elif missing:
             kind = {"Decisions": "decision", "Rules": "rule"}[name]
             body += f'\n\n{len(missing)} more card(s) left out. Use recall(kinds=["{kind}"]) with narrower tags.'
@@ -828,7 +859,7 @@ def read_wake_card(
                 note = (
                     f"\n\nNot shown here: {withheld_rules['recheck']} rule card(s) waiting to be checked "
                     f"and {withheld_rules['done']} closed. They are not confirmed. "
-                    'Find them with recall(kinds=["rule"]) or read_card(<id>).'
+                    'Find them with recall(tags=[...], kinds=["rule"]) or read_card(card_id="<id>").'
                 )
                 section["text"] += note
                 section["tokens"] = _tokens(section["text"])

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
 from pathlib import Path
 
@@ -26,8 +25,6 @@ GENERIC = ROOT / "config" / "tag-patterns.generic.json"
 CITY = ROOT / "config" / "tag-patterns.city.json"
 FIXTURE = ROOT / "tests" / "fixtures" / "cards"
 PRIVATE = ROOT / "fixtures" / "private"
-BROKEN_INPUT = False
-FAIL_ONCE = os.environ.get("BRIEF02_FAIL_ONCE", "")
 
 
 def _store(tmp_path: Path) -> CardStore:
@@ -46,10 +43,7 @@ def _write(store: CardStore, text: str = "Keep the raw line.") -> dict:
 def test_system_fields_are_refused(tmp_path: Path) -> None:
     store = _store(tmp_path)
     payload = {"kind": "rule", "text": "Keep the raw line."}
-    if BROKEN_INPUT:
-        forbidden = "not_a_system_field"
-    else:
-        forbidden = "source"
+    forbidden = "source"
     payload[forbidden] = "caller value"
     with pytest.raises(CardError, match="system field"):
         store.write(payload, wake="w123", source="self", channel="session")
@@ -61,8 +55,6 @@ def test_deleted_index_rebuilds_identically(tmp_path: Path) -> None:
     expected = json.loads(store.index_path.read_text(encoding="utf-8"))
     store.index_path.unlink()
     rebuilt = store.rebuild_index()
-    if BROKEN_INPUT:
-        expected = {"broken": True}
     assert rebuilt == expected
     assert json.loads(store.index_path.read_text(encoding="utf-8")) == expected
 
@@ -72,13 +64,11 @@ def test_earlier_jsonl_bytes_never_change(tmp_path: Path) -> None:
     for number in range(1, 7):
         before = store.cards_path.read_bytes() if store.cards_path.exists() else b""
         _write(store, f"Rule {number}")
-        if BROKEN_INPUT:
-            before += b"broken"
         assert store.cards_path.read_bytes().startswith(before)
 
 
 def test_made_up_city_tags() -> None:
-    patterns = load_patterns(GENERIC if BROKEN_INPUT else CITY)
+    patterns = load_patterns(CITY)
     tags = extract_tags(
         kind="thread",
         title="Mira (#12)",
@@ -107,20 +97,12 @@ def test_tag_extraction_is_deterministic() -> None:
     patterns = load_patterns(CITY)
     kwargs = {"kind": "decision", "text": "Place 44 at W123", "patterns": patterns}
     first = extract_tags(**kwargs)
-    if BROKEN_INPUT:
-        kwargs["text"] += " and W999"
     assert extract_tags(**kwargs) == first
 
 
 def test_migration_cuts_all_logical_files_and_reviews_lessons(tmp_path: Path) -> None:
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
-    if BROKEN_INPUT:
-        lessons = source / "memory" / "lessons.md"
-        lessons.write_text(
-            lessons.read_text(encoding="utf-8").replace("## 2026-09-01-0900", "# 2026-09-01-0900"),
-            encoding="utf-8",
-        )
     output = tmp_path / "output"
     cards = migrate(source, source / "naming.json", CITY, output_root=output)
     lesson_cards = [card for card in cards if card["origin"]["logical"] == "lessons"]
@@ -141,9 +123,6 @@ def test_made_up_fixture_round_trip(tmp_path: Path) -> None:
     generated = tmp_path / "generated"
     generate_views(output / "cards" / "cards.jsonl", generated)
     files = sorted({card["origin"]["file"] for card in cards})
-    if BROKEN_INPUT:
-        target = source / files[0]
-        target.write_text(target.read_text(encoding="utf-8") + "changed\n", encoding="utf-8")
     assert round_trip_differences(source, generated, files) == []
 
 
@@ -154,8 +133,6 @@ def test_private_real_line_tag_set() -> None:
     patterns = load_patterns(CITY)
     cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
     assert len(cases) >= 30
-    if BROKEN_INPUT:
-        cases[0]["tags"] = ["broken:input"]
     for case in cases:
         assert extract_tags(kind=case["kind"], text=case["text"], patterns=patterns) == case["tags"]
 
@@ -163,8 +140,6 @@ def test_private_real_line_tag_set() -> None:
 def test_goals_at_fixture_root_become_goal_cards(tmp_path: Path) -> None:
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
-    if FAIL_ONCE == "goals":
-        (source / "goals.md").unlink()
     cards = migrate(source, source / "naming.json", CITY, output_root=tmp_path / "output")
     goals = [card for card in cards if card["origin"]["logical"] == "goals"]
     assert goals and all(card["kind"] == "goal" for card in goals)
@@ -181,7 +156,7 @@ def test_continuity_cuts_five_top_level_bullets_and_round_trips(tmp_path: Path) 
     )
     cards = migrate(source, source / "naming.json", CITY, output_root=tmp_path / "output")
     decisions = [card for card in cards if card["origin"]["logical"] == "continuity"]
-    expected = 4 if FAIL_ONCE == "continuity" else 5
+    expected = 5
     assert len(decisions) == expected
     generated = tmp_path / "generated"
     generate_views(tmp_path / "output" / "cards" / "cards.jsonl", generated)
@@ -199,8 +174,6 @@ def test_round_trip_preserves_crlf_and_missing_final_newline(tmp_path: Path) -> 
     generated = tmp_path / "generated"
     generate_views(tmp_path / "output" / "cards" / "cards.jsonl", generated)
     expected = lessons.read_bytes()
-    if FAIL_ONCE == "bytes":
-        expected = expected.replace(b"\r\n", b"\n")
     assert (generated / "memory" / "lessons.md").read_bytes() == expected
     assert (generated / "memory" / "continuity.md").read_bytes() == continuity.read_bytes()
 
@@ -212,7 +185,7 @@ def test_no_id_dossier_is_recheck_and_reported(tmp_path: Path) -> None:
     dossier.write_text("# Resident: mira (#—)\n\n- **Resident ID:** —\n", encoding="utf-8")
     cards = migrate(source, source / "naming.json", CITY, output_root=tmp_path / "output")
     card = next(card for card in cards if card["origin"]["file"].endswith("mira.md"))
-    expected = "resident:999" if FAIL_ONCE == "no_id" else "name:mira"
+    expected = "name:mira"
     assert expected in card["tags"]
     assert card["status"] == "recheck"
     assert "mira.md" in (tmp_path / "output" / "cards" / "migration-report.md").read_text(encoding="utf-8")
@@ -225,8 +198,6 @@ def test_square_and_market_ids_never_become_resident_tags() -> None:
         text="Rin is Square citizen #688 and Market merchant #42.",
         patterns=patterns,
     )
-    if FAIL_ONCE == "service_ids":
-        tags.append("resident:688")
     assert "square:688" in tags
     assert "market:42" in tags
     assert not any(tag.startswith("resident:") for tag in tags)
@@ -242,7 +213,7 @@ def test_recut_changed_entry_keeps_ids_and_versions_only_one(tmp_path: Path) -> 
     result = recut_file(source, source / "naming.json", CITY, "open_threads", path)
     after = CardStore(source / "memory", CITY)._current_state()
     changed = [card_id for card_id in before if before[card_id]["text"] != after[card_id]["text"]]
-    expected = [] if FAIL_ONCE == "recut_edit" else [result["changed"][0]]
+    expected = [result["changed"][0]]
     assert changed == expected
     assert set(before) == set(after)
 
@@ -259,7 +230,7 @@ def test_recut_removed_entry_marks_card_done_and_readable(tmp_path: Path) -> Non
     result = recut_file(source, source / "naming.json", CITY, "open_threads", path)
     removed_id = result["removed"][0]
     card = read_card(source / "memory", removed_id)
-    expected = "live" if FAIL_ONCE == "recut_remove" else "done"
+    expected = "done"
     assert card["card"]["status"] == expected
     assert removed_id in thread_ids
     assert card["card"]["status_reason"] == "removed from source file"
@@ -271,11 +242,9 @@ def test_recall_refuses_over_budget_and_logs_read(tmp_path: Path) -> None:
     config = tmp_path / "budget.json"
     config.write_text(json.dumps({"recall_tokens": 1, "wake_sections": {}}), encoding="utf-8")
     result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
-    if FAIL_ONCE == "recall_budget":
-        result["refused"] = False
     assert result["refused"] is True
     assert result["matched"] == 1
-    assert (tmp_path / "cards" / "reads.jsonl").is_file()
+    assert (tmp_path / "private" / "card-reads.jsonl").is_file()
 
 
 def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path) -> None:
@@ -292,7 +261,7 @@ def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path)
     left = result["left_out_cards"][0]["id"]
     assert {left, result["cards"][0]["id"]} == {first["id"], second["id"]}
     assert "read_card" in result["message"]
-    logged = json.loads((tmp_path / "cards" / "reads.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    logged = json.loads((tmp_path / "private" / "card-reads.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert logged["ids"] == [result["cards"][0]["id"]]
 
 
@@ -305,8 +274,6 @@ def test_recall_does_not_change_cards_and_ranks_tags_weight_newest(tmp_path: Pat
     raw = store.cards_path.read_bytes()
     result = recall(tmp_path, tags=["wake:w123", "wake:w124"], config_path=ROOT / "config" / "cards.json")
     ids = [card["id"] for card in result["cards"]]
-    if FAIL_ONCE == "recall_rank":
-        ids.reverse()
     assert ids == [b["id"], c["id"], a["id"]]
     assert store.cards_path.read_bytes() == raw
 
@@ -324,7 +291,7 @@ def test_read_wake_card_has_eight_ordered_sections(tmp_path: Path) -> None:
     result = read_wake_card(source, source / "naming.json", config_path=ROOT / "config" / "cards.json", here_tags=["name:mira"])
     section_names = ["## Who I am", "## What I was doing", "## What I owe", "## Open threads (index)", "## Decisions", "## Rules", "## What needs checking", "## What's here"]
     headings = sorted(section_names, key=result["text"].index)
-    expected = headings[:-1] if FAIL_ONCE == "wake" else headings
+    expected = headings
     assert expected == section_names
     assert "Identity whole." in result["text"] and "Governance whole." in result["text"]
 

@@ -33,6 +33,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 from mcp.server.fastmcp import FastMCP
 from tools import credentials, keys, names, profile
+from tools.official_facts import official_view
 
 mcp = FastMCP("agent-square")
 
@@ -222,6 +223,21 @@ def read_square_quotas() -> dict:
         "citizen_id": citizen,
         "quotas": result.get("quotas") or result.get("quotas_left") or {},
     }
+
+
+@mcp.tool()
+def read_square_official(fields: list[str] | None = None) -> dict:
+    """Read The Square's own official facts: its rules, limits, and what it recognises.
+
+    This is the Square's record of how the Square works. Read it here rather
+    than relying on a note of your own; it changes. With no arguments you get
+    the short fields and the names of the larger ones. Pass `fields` to read
+    named fields in full.
+
+    Args:
+        fields: Names of fields to return in full, for example ["rate_limit"].
+    """
+    return official_view(_square_request("GET", "/api/official"), fields, source="1f916.ai/api/official")
 
 
 @mcp.tool()
