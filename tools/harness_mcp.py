@@ -2185,6 +2185,10 @@ def read_almanac_status() -> dict[str, object]:
     }
 
 
+# Stands between records of the same place in one file.
+PLACE_RECORD_BREAK = "\n---\n\n"
+
+
 def _place_records(places_dir: Path, place_id: int) -> list[Path]:
     """Every record file for a place, whatever its slug, in stable order."""
     return sorted(
@@ -2239,13 +2243,19 @@ def record_place(
     quirks_and_laws: str | None = None,
     impression: str | None = None,
 ) -> str:
-    """Record qualitative field notes for a place and mark it visited in map.json."""
+    """Record field notes and mark the place visited in map.json.
+
+    Keep one file per place and append later records beneath earlier ones.
+    """
     places_dir = REPO / names.rel("atlas") / "places"
     places_dir.mkdir(parents=True, exist_ok=True)
 
     clean_slug = re.sub(r"[^a-z0-9]+", "-", slug.lower()).strip("-")
     clean_slug = re.sub(r"^" + str(place_id) + r"-+", "", clean_slug)
     filename = f"{place_id}-{clean_slug}.md" if clean_slug else f"{place_id}.md"
+    existing = _place_records(places_dir, place_id)
+    if existing:
+        filename = existing[0].name
     target_file = places_dir / filename
 
     things_str = "\n".join(f"- {t}" for t in active_things) if active_things else "- (none observed)"
@@ -2273,6 +2283,11 @@ def record_place(
 ## Field Impression
 {imp_str}
 """
+    earlier = 0
+    if existing:
+        before = target_file.read_text(encoding="utf-8")
+        earlier = before.count(PLACE_RECORD_BREAK) + 1
+        content = before.rstrip("\r\n") + "\n" + PLACE_RECORD_BREAK + content
     target_file.write_text(content, encoding="utf-8")
 
     # Pull parent_id and official name from almanac.json before writing to map.json
@@ -2292,7 +2307,8 @@ def record_place(
 
     update_map([map_entry])
 
-    return f"Atlas entry recorded in {names.rel('atlas')}/places/{filename} and place {place_id} marked visited in map.json."
+    beneath = f", beneath {earlier} earlier record(s)" if earlier else ""
+    return f"Atlas entry recorded in {names.rel('atlas')}/places/{filename}{beneath} and place {place_id} marked visited in map.json."
 
 
 @mcp.tool(name=names.tool("read_resident"))

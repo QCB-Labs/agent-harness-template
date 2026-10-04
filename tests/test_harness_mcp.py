@@ -2981,3 +2981,33 @@ def test_read_place_returns_every_file_for_a_place(isolated_repo: Path) -> None:
     # Stable order, by filename, and the same on every call.
     assert result.index("731-sample-workshop.md =====") < result.index("731-the-sample-workshop.md =====")
     assert harness_mcp.read_place(place_id=731) == result
+
+def test_record_place_adds_a_later_record_beneath_the_first(isolated_repo: Path) -> None:
+    places_dir = isolated_repo / names.rel("atlas") / "places"
+
+    first = harness_mcp.record_place(
+        place_id=731, slug="the-made-up-station", physical_description="Basalt worktables beneath a skylight.",
+        active_things=["812: a made-up chronometer"],
+    )
+    assert "beneath" not in first
+    second = harness_mcp.record_place(
+        place_id=731, slug="made-up-station", physical_description="Slate counters and an open bench.",
+    )
+
+    # A different slug for the same place lands in the same file.
+    assert [path.name for path in places_dir.glob("731*.md")] == ["731-the-made-up-station.md"]
+    assert "731-the-made-up-station.md, beneath 1 earlier record(s)" in second
+    content = (places_dir / "731-the-made-up-station.md").read_text(encoding="utf-8")
+    assert content.index("Basalt worktables beneath a skylight.") < content.index("Slate counters and an open bench.")
+    assert "812: a made-up chronometer" in content
+    assert content.count("# Place [731]:") == 2
+    assert content.count(harness_mcp.PLACE_RECORD_BREAK) == 1
+
+    third = harness_mcp.record_place(place_id=731, slug="x", physical_description="Third visit.")
+    assert "beneath 2 earlier record(s)" in third
+    assert harness_mcp.read_place(place_id=731).count("# Place [731]:") == 3
+
+    # A place whose id merely starts with the same digits keeps its own file.
+    harness_mcp.record_place(place_id=73, slug="made-up-station", physical_description="Elsewhere.")
+    assert (places_dir / "73-made-up-station.md").exists()
+    assert "Elsewhere." not in (places_dir / "731-the-made-up-station.md").read_text(encoding="utf-8")
