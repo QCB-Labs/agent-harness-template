@@ -161,18 +161,29 @@ def _nonce_file() -> Path:
     return REPO_ROOT / names.memory("replay") / "seen_nonces.json"
 
 
+class NonceLedgerUnreadable(Exception):
+    """The replay ledger exists but cannot be read as a ledger."""
+
+
 def load_seen_nonces() -> dict[str, str]:
-    """Return {nonce: first_seen_iso}, pruned of entries past retention."""
+    """Return {nonce: first_seen_iso}, pruned of entries past retention.
+
+    No ledger yet means nothing has been used. A ledger that is there but
+    broken is different: reading it as empty would forget every used nonce
+    and let a consumed command through again, so it raises.
+    """
     path = _nonce_file()
     if not path.exists():
         return {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
-    entries = data.get("nonces", {})
+        entries = data.get("nonces", {})
+    except Exception as exc:
+        raise NonceLedgerUnreadable(str(exc)) from exc
     if isinstance(entries, list):  # tolerate an older list-shaped ledger
         entries = {nonce: "1970-01-01T00:00:00Z" for nonce in entries}
+    if not isinstance(entries, dict):
+        raise NonceLedgerUnreadable("nonces is not a mapping")
     cutoff = _now() - NONCE_RETENTION
     kept = {}
     for nonce, seen_at in entries.items():
@@ -234,7 +245,10 @@ def verify_command(payload: str, consume: bool = False) -> tuple[bool, str | Non
         return False, None, "no nonce"
     nonce = nonce_match.group(1)
 
-    seen = load_seen_nonces()
+    try:
+        seen = load_seen_nonces()
+    except NonceLedgerUnreadable:
+        return False, None, "replay ledger unreadable; refusing until it is repaired"
     if nonce in seen:
         return False, None, "nonce already used (replay)"
 

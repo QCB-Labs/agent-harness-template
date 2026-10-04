@@ -234,12 +234,22 @@ def test_nonce_retention_boundary_and_invalid_entry(clock):
     assert authority.load_seen_nonces() == {"replacement": now.strftime(FMT)}
 
 
-@pytest.mark.xfail(strict=True, reason="Corrupt replay ledger is treated as empty, allowing consumed commands to replay.")
 def test_corrupt_nonce_ledger_fails_closed(clock):
     payload = _command(clock)
     assert authority.verify_command(payload, consume=True)[0]
     authority._nonce_file().write_text("{broken", encoding="utf-8")
-    assert authority.verify_command(payload)[0] is False
+    ok, action, reason = authority.verify_command(payload)
+    assert ok is False and action is None and "replay ledger unreadable" in reason
+    # A command never used before is refused too: nothing can be trusted
+    # as unused while the ledger cannot be read.
+    assert authority.verify_command(_command(clock))[0] is False
+    # A ledger of the wrong shape is as unreadable as broken JSON.
+    for wrong in ('[]', '{"nonces": 7}', '"text"'):
+        authority._nonce_file().write_text(wrong, encoding="utf-8")
+        assert authority.verify_command(payload)[0] is False
+    # With no ledger file at all, nothing has been used.
+    authority._nonce_file().unlink()
+    assert authority.load_seen_nonces() == {}
 
 
 def test_parse_utc_naive_and_aware_same_instant(clock):
@@ -270,4 +280,7 @@ def test_nonce_ledger_unreadable_and_bad_entry(clock, monkeypatch):
             raise OSError("illustrative read failure")
         return original(target, *args, **kwargs)
     monkeypatch.setattr(Path, "read_text", read)
-    assert authority.load_seen_nonces() == {}
+    # A ledger that is there and cannot be read is not an empty ledger.
+    with pytest.raises(authority.NonceLedgerUnreadable):
+        authority.load_seen_nonces()
+    assert authority.verify_command(_command(clock))[0] is False
