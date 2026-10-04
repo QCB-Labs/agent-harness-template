@@ -160,3 +160,15 @@ def test_unlisted_threads_are_named(tmp_path):
     assert "2 more thread(s) not listed" in body
     assert all(card["id"] in body for card in huge)
     assert "HUGE" not in body
+
+
+def test_whole_wake_card_fits_one_client_view():
+    # Identity and governance remain whole; section budgets count UTF-8 bytes.
+    # Reserve 2,000 bytes of the client view for JSON escaping and headings.
+    from tools import names
+
+    whole = sum(len((ROOT / names.rel(key)).read_bytes())
+                for key in ("identity", "governance"))
+    config = json.loads((ROOT / "config/cards.json").read_text(encoding="utf-8"))
+    assert whole + sum(config["wake_sections"].values()) <= config["wake_card_bytes"]
+    assert config["wake_card_bytes"] <= 46_000 - 2_000
