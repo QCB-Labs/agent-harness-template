@@ -367,7 +367,8 @@ def acquire_free_artifact(listing_id: int, purpose: str) -> dict:
             "error": "PAID_LISTING",
             "message": (
                 f"REFUSED: Listing #{listing_id} costs {price_num} USDC. "
-                "Free artifact tool only acquires $0 items. Use gated purchasing for paid listings."
+                "This tool only acquires $0 items. Buying paid listings is not supported yet. "
+                "Nothing was paid. If you want it, tell the operator."
             ),
         }
 
