@@ -390,7 +390,7 @@ def test_write_journal_creates_wake_numbered_file_and_cleans_recovery(
 
     content = "Test journal entry: Signals received! 🚀\nFull UTF-8 body."
 
-    result_path = harness_mcp.write_journal(content)
+    result_path = harness_mcp.write_journal(content).splitlines()[0]
 
     journal_dir = isolated_repo / names.rel("journal")
     assert result_path == f"2026-09/{names.wake_id(1)}-2026-09-01.md"
@@ -423,7 +423,9 @@ def test_write_journal_records_even_when_email_fails(
     monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
     monkeypatch.setattr(harness_mcp, "_send_email", lambda subject, body: False)
 
-    result_path = harness_mcp.write_journal("Entry")
+    reply = harness_mcp.write_journal("Entry")
+    result_path = reply.splitlines()[0]
+    assert "not sent" in reply
 
     assert (isolated_repo / names.rel("journal") / result_path).exists()
 
@@ -468,7 +470,7 @@ def test_write_journal_uses_collision_suffixes(
     (month_dir / f"{base}.md").write_text("existing", encoding="utf-8")
     (month_dir / f"{base}-b.md").write_text("existing b", encoding="utf-8")
 
-    result_path = harness_mcp.write_journal("Collision entry")
+    result_path = harness_mcp.write_journal("Collision entry").splitlines()[0]
 
     assert result_path == f"2026-09/{base}-c.md"
     assert (journal_dir / result_path).read_text(encoding="utf-8") == "Collision entry"
@@ -1140,7 +1142,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     assert reply_result.isError is False
     assert reply_result.content[0].text.startswith("REFUSED")
     assert json.loads(budget_result.content[0].text) == budget
-    assert written_journal.content[0].text.endswith(".md")
+    assert written_journal.content[0].text.splitlines()[0].endswith(".md")
     assert refused_goals.content[0].text.startswith("REFUSED —")
     assert accepted_goals.content[0].text.startswith(f"{names.rel('goals')} updated (")
     assert identity_update.content[0].text == (

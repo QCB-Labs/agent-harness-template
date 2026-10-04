@@ -873,10 +873,12 @@ def write_journal(content: str) -> str:
 
     # After-action report. Sent by the harness, not left to the model, and only
     # once the log is safely on disk. A failed send never undoes the record.
-    _send_email(
+    mailed = _send_email(
         subject=f"[{profile.display_name()}] Wake {names.wake_id(wake_count)} after-action report",
         body=content,
     )
+    if mailed is False:
+        return f"{relative_path}\n\nThe log is saved. The after-action mail to the operator was not sent."
     return relative_path
 
 

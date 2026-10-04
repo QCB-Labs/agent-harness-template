@@ -66,7 +66,7 @@ def test_each_writer_recuts_its_own_files_once(repo, monkeypatch, writer):
         result = harness.update_goals("# Goals\n\n## Compass\nFind it.\n")
         expected = [("goals", names.rel("goals"))]
     elif writer == "write_journal":
-        result = harness.write_journal("# Log\n\n## Plan\nLook tomorrow.\n")
+        result = harness.write_journal("# Log\n\n## Plan\nLook tomorrow.\n").splitlines()[0]
         expected = [("journal", names.rel("journal") + "/" + result)]
     elif writer == "file_unrecorded":
         dump = repo / names.rel("journal") / "_UNRECORDED-2026-09-30-120000.md"
