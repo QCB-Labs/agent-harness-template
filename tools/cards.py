@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 import re
 import unicodedata
 from collections import defaultdict
@@ -556,11 +555,14 @@ def read_card(memory_root: Path, card_id: str, history: bool = False) -> dict[st
 
 
 def _config(path: Path) -> dict[str, Any]:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    config = json.loads(Path(path).read_text(encoding="utf-8"))
+    if "recall_tokens" in config:
+        raise CardError("recall_tokens is no longer supported; use recall_bytes.")
+    return config
 
 
-def _tokens(text: str) -> int:
-    return math.ceil(len(text) / 4)
+def _utf8_bytes(text: str) -> int:
+    return len(text.encode("utf-8"))
 
 
 LEFT_OUT_NAMED = 5
@@ -581,7 +583,7 @@ def _left_out_entry(card: dict[str, Any]) -> dict[str, Any]:
         "id": card["id"],
         "kind": card["kind"],
         "title": title,
-        "tokens": _tokens(card["text"]),
+        "bytes": _utf8_bytes(card["text"]),
         "from": (card.get("origin") or {}).get("file", ""),
     }
 
@@ -621,8 +623,8 @@ def recall(
         reverse=True,
     )
     selected = matches[:max(0, limit)]
-    token_count = sum(_tokens(card["text"]) for card in selected)
-    budget = int(_config(config_path)["recall_tokens"])
+    byte_count = sum(_utf8_bytes(card["text"]) for card in selected)
+    budget = int(_config(config_path)["recall_bytes"])
     # Whole cards only, best match first. An over-budget answer returns what
     # fits and names the rest; it is refused only when no card fits at all.
     returned, _ = _fit_cards(selected, budget)
@@ -634,21 +636,21 @@ def recall(
         "matched": len(matches),
         "left_out": len(missing),
         "left_out_cards": [_left_out_entry(card) for card in missing],
-        "tokens": sum(_tokens(card["text"]) for card in returned),
+        "bytes": sum(_utf8_bytes(card["text"]) for card in returned),
         "budget": budget,
         "refused": refused,
         "cards": returned,
     }
     if refused:
-        result["message"] = f"No card fits: the best match alone is over {budget} tokens. Read it with read_card(card_id=\"<id>\")."
+        result["message"] = f"No card fits: the best match alone is over {budget} bytes. Read it with read_card(card_id=\"<id>\")."
     elif missing:
         named = "; ".join(
-            f"{entry['id']} ({entry['kind']}, {entry['tokens']} tokens): {entry['title']}"
+            f"{entry['id']} ({entry['kind']}, {entry['bytes']} bytes): {entry['title']}"
             for entry in result["left_out_cards"][:LEFT_OUT_NAMED]
         )
         more = len(missing) - LEFT_OUT_NAMED
         result["message"] = (
-            f"{len(missing)} matching card(s) left out ({token_count} tokens asked, {budget} allowed): {named}"
+            f"{len(missing)} matching card(s) left out ({byte_count} bytes asked, {budget} allowed): {named}"
             + (f"; and {more} more in left_out_cards" if more > 0 else "")
             + ". Read one with read_card(card_id=\"<id>\"), or narrow the tags or kinds."
         )
@@ -752,7 +754,7 @@ def _fit_cards(cards: list[dict[str, Any]], budget: int) -> tuple[list[dict[str,
     chosen: list[dict[str, Any]] = []
     used = 0
     for card in cards:
-        cost = _tokens(card["text"])
+        cost = _utf8_bytes(card["text"])
         if used + cost <= budget:
             chosen.append(card)
             used += cost
@@ -773,7 +775,9 @@ def _file_order(cards: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return fresh + filed
 
 
-def _wake_added_section(name: str, candidates: list[dict[str, Any]], budget: int) -> dict[str, Any]:
+def _wake_added_section(
+    name: str, candidates: list[dict[str, Any]], budget: int, max_cards: int | None = None,
+) -> dict[str, Any]:
     """Fit whole entries, including separators and recall guidance in the budget."""
     is_index = name == "Open threads (index)"
     entries = []
@@ -799,10 +803,12 @@ def _wake_added_section(name: str, candidates: list[dict[str, Any]], budget: int
 
     chosen: list[int] = []
     for i in range(len(entries)):
-        if _tokens(render(chosen + [i])) <= budget:
+        if _utf8_bytes(render(chosen + [i])) <= budget:
             chosen.append(i)
+    if max_cards is not None:
+        chosen = chosen[:max_cards]
     body = render(chosen)
-    return {"name": name, "text": body, "tokens": _tokens(body), "shown": len(chosen), "left_out": len(entries) - len(chosen)}
+    return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": len(entries) - len(chosen)}
 
 
 def read_wake_card(
@@ -823,7 +829,8 @@ def read_wake_card(
         card = json.loads(line)
         state[card["id"]] = card
     cards = list(state.values())
-    cfg = _config(config_path)["wake_sections"]
+    config = _config(config_path)
+    cfg = config["wake_sections"]
     identity = _read_source_text(root / resolved["identity"])
     governance = _read_source_text(root / resolved["governance"])
     handovers = [c for c in cards if c["kind"] == "handover" and c["status"] in {"live", "recheck"}]
@@ -859,10 +866,11 @@ def read_wake_card(
         ("What needs checking", checking, int(cfg["what_needs_checking"])),
         ("What's here", here, int(cfg["whats_here"])),
     ]
-    sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "tokens": _tokens(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
-    for name, candidates, budget in groups:
+    def build_section(
+        name: str, candidates: list[dict[str, Any]], budget: int, max_cards: int | None = None,
+    ) -> dict[str, Any]:
         if name in {"Open threads (index)", "Rules"}:
-            section = _wake_added_section(name, candidates, budget)
+            section = _wake_added_section(name, candidates, budget, max_cards)
             if name == "Rules" and any(withheld_rules.values()):
                 note = (
                     f"\n\nNot shown here: {withheld_rules['recheck']} rule card(s) waiting to be checked "
@@ -870,16 +878,34 @@ def read_wake_card(
                     'Find them with recall(tags=[...], kinds=["rule"]) or read_card(card_id="<id>").'
                 )
                 section["text"] += note
-                section["tokens"] = _tokens(section["text"])
-            sections.append(section)
-            continue
-        chosen, left = _fit_cards(candidates, budget)
+                section["bytes"] = _utf8_bytes(section["text"])
+            return section
+        chosen, _ = _fit_cards(candidates, budget)
+        if max_cards is not None:
+            chosen = chosen[:max_cards]
+        left = len(candidates) - len(chosen)
         body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
         if left:
             body += f"\n\n{left} more card(s) left out. Use recall with narrower tags or kinds."
-        sections.append({"name": name, "text": body, "tokens": _tokens(body), "shown": len(chosen), "left_out": left})
-    rendered = "\n\n".join(f"## {section['name']}\n\n{section['text']}" for section in sections)
+        return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": left}
+
+    sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "bytes": _utf8_bytes(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
+    sections.extend(build_section(*group) for group in groups)
+
+    def render():
+        return "\n\n".join(f"## {section['name']}\n\n{section['text']}" for section in sections)
+
+    rendered = render()
+    limit = int(config["wake_card_bytes"])
+    dropped = 0
+    for index in range(len(groups), 0, -1):
+        while _utf8_bytes(rendered) > limit and sections[index]["shown"]:
+            sections[index] = build_section(*groups[index - 1], max_cards=sections[index]["shown"] - 1)
+            dropped += 1
+            rendered = render()
+    if _utf8_bytes(rendered) > limit:
+        raise CardError("wake_card_bytes is too small for whole identity, governance and section notices.")
     # The text goes out once. Sections carry sizes and counts only, so the card
     # doesn't cost twice its length in the agent's context.
     summary = [{key: value for key, value in section.items() if key != "text"} for section in sections]
-    return {"text": rendered, "sections": summary, "total_budgeted_tokens": sum(section["tokens"] for section in sections[1:])}
+    return {"text": rendered, "sections": summary, "total_bytes": _utf8_bytes(rendered), "dropped_cards": dropped}

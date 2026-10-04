@@ -223,7 +223,7 @@ def test_recall_refuses_over_budget_and_logs_read(tmp_path: Path) -> None:
     store = _store(tmp_path)
     _write(store, "x" * 80)
     config = tmp_path / "budget.json"
-    config.write_text(json.dumps({"recall_tokens": 1, "wake_sections": {}}), encoding="utf-8")
+    config.write_text(json.dumps({"recall_bytes": 4, "wake_sections": {}}), encoding="utf-8")
     result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
     assert result["refused"] is True
     assert result["matched"] == 1
@@ -235,7 +235,7 @@ def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path)
     first = _write(store, "a" * 80)
     second = _write(store, "b" * 80)
     config = tmp_path / "budget.json"
-    config.write_text(json.dumps({"recall_tokens": 25, "wake_sections": {}}), encoding="utf-8")
+    config.write_text(json.dumps({"recall_bytes": 100, "wake_sections": {}}), encoding="utf-8")
     result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
     assert result["refused"] is False
     assert len(result["cards"]) == 1
@@ -301,13 +301,13 @@ def test_recall_says_what_each_left_out_card_is(tmp_path: Path) -> None:
     _write(store, "kept " * 10)
     untitled = _write(store, "# Made-up log, wake nine\n\n" + "body " * 60)
     config = tmp_path / "budget.json"
-    config.write_text(json.dumps({"recall_tokens": 25, "wake_sections": {}}), encoding="utf-8")
+    config.write_text(json.dumps({"recall_bytes": 100, "wake_sections": {}}), encoding="utf-8")
     result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
     entry = result["left_out_cards"][0]
     assert entry["id"] == untitled["id"]
     assert entry["title"] == "Made-up log, wake nine"
-    assert entry["tokens"] > 25
-    assert f"{untitled['id']} (rule, {entry['tokens']} tokens): Made-up log, wake nine" in result["message"]
+    assert entry["bytes"] > 100
+    assert f"{untitled['id']} (rule, {entry['bytes']} bytes): Made-up log, wake nine" in result["message"]
     assert "body" not in result["message"]
 
 
@@ -316,10 +316,10 @@ def test_recall_names_five_left_out_cards_and_counts_the_rest(tmp_path: Path) ->
     for n in range(7):
         _write(store, f"# Made-up entry {n}\n\n" + "body " * 60)
     config = tmp_path / "budget.json"
-    config.write_text(json.dumps({"recall_tokens": 100, "wake_sections": {}}), encoding="utf-8")
+    config.write_text(json.dumps({"recall_bytes": 400, "wake_sections": {}}), encoding="utf-8")
     result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
     assert result["left_out"] == 6 and len(result["left_out_cards"]) == 6
-    assert result["message"].count("tokens):") == 5
+    assert result["message"].count("bytes):") == 5
     assert "and 1 more in left_out_cards" in result["message"]
 
 
@@ -332,3 +332,27 @@ def test_decision_card_can_still_be_read_and_recalled(tmp_path: Path) -> None:
     result = recall(tmp_path, tags=[], kinds=["decision"], config_path=ROOT / "config" / "cards.json")
     assert result["cards"] == [card]
     assert store.cards_path.read_bytes() == before
+
+
+def test_japanese_card_counts_utf8_bytes_and_is_left_out(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    card = _write(store, "日" * 100)
+    config = tmp_path / "budget.json"
+    config.write_text(json.dumps({"recall_bytes": 250, "wake_sections": {}}), encoding="utf-8")
+    result = recall(tmp_path, tags=[], config_path=config)
+    assert result["refused"] is True and result["cards"] == []
+    assert result["bytes"] == 0 and result["budget"] == 250
+    assert result["left_out_cards"][0]["id"] == card["id"]
+    assert result["left_out_cards"][0]["bytes"] == 300
+    assert "250 bytes" in result["message"]
+
+
+@pytest.mark.parametrize("new_key", [False, True])
+def test_legacy_recall_tokens_config_is_refused(tmp_path: Path, new_key: bool) -> None:
+    config = tmp_path / "budget.json"
+    data = {"recall_tokens": 4000, "wake_sections": {}}
+    if new_key:
+        data["recall_bytes"] = 16000
+    config.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(CardError, match="recall_bytes"):
+        recall(tmp_path, tags=[], config_path=config)

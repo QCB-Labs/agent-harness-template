@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.cards import CardStore, read_wake_card
+from tools.cards import CardError, CardStore, read_wake_card
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ["Who I am", "What I was doing", "What I owe", "Open threads (index)",
@@ -19,7 +19,7 @@ def fixture(tmp_path):
     naming.write_text(json.dumps({"dirs": {"memory": "memory"}, "paths": {
         "identity": identity, "governance": "governance.md"}}), encoding="utf-8")
     config = json.loads((ROOT / "config/cards.json").read_text(encoding="utf-8"))
-    config["wake_sections"].update(thread_index=2000, rules=3000)
+    config["wake_sections"].update(thread_index=8000, rules=12000)
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     store = CardStore(tmp_path / "memory", ROOT / "config/tag-patterns.city.json")
@@ -28,8 +28,8 @@ def fixture(tmp_path):
         return store.write({"kind": kind, "text": text, **extra},
                            wake="test", source="self", channel="session")
 
-    def read():
-        return read_wake_card(tmp_path, naming, config_path=config_path)
+    def read(**kwargs):
+        return read_wake_card(tmp_path, naming, config_path=config_path, **kwargs)
 
     return store, add, read, config, config_path
 
@@ -92,12 +92,12 @@ def test_new_sections_respect_budget_without_partial_cards(tmp_path, kind, name,
     _, add, read, config, config_path = fixture(tmp_path)
     add(kind, "FULL SMALL ENTRY", title="Small title")
     add(kind, "HUGE BODY " * 1000, title="HUGE TITLE " * 1000)
-    config["wake_sections"][key] = 80
+    config["wake_sections"][key] = 320
     config_path.write_text(json.dumps(config), encoding="utf-8")
     result = read()
     info = next(s for s in result["sections"] if s["name"] == name)
     body = section(result, name)
-    assert info["tokens"] <= 80
+    assert info["bytes"] <= 320
     assert info["shown"] == 1 and info["left_out"] == 1
     assert ("Small title" if kind == "thread" else "FULL SMALL ENTRY") in body
     assert "HUGE" not in body
@@ -138,17 +138,27 @@ def test_unlisted_threads_are_named(tmp_path):
     _, add, read, config, config_path = fixture(tmp_path)
     add("thread", "BODY", title="Small title")
     huge = [add("thread", "BODY", title="HUGE TITLE " * 1000) for _ in range(2)]
-    config["wake_sections"]["thread_index"] = 80
+    config["wake_sections"]["thread_index"] = 320
     config_path.write_text(json.dumps(config), encoding="utf-8")
     result = read()
     info = next(s for s in result["sections"] if s["name"] == "Open threads (index)")
     body = section(result, "Open threads (index)")
-    assert info["tokens"] <= 80 and info["left_out"] == 2
+    assert info["bytes"] <= 320 and info["left_out"] == 2
     assert "2 more thread(s) not listed" in body
     assert all(card["id"] in body for card in huge)
     assert "HUGE" not in body
 
 
+def test_whole_wake_card_fits_one_client_view():
+    # Identity and governance remain whole; section budgets count UTF-8 bytes.
+    # Reserve 2,000 bytes of the client view for JSON escaping and headings.
+    from tools import names
+
+    whole = sum(len((ROOT / names.rel(key)).read_bytes())
+                for key in ("identity", "governance"))
+    config = json.loads((ROOT / "config/cards.json").read_text(encoding="utf-8"))
+    assert whole + sum(config["wake_sections"].values()) <= config["wake_card_bytes"]
+    assert config["wake_card_bytes"] <= 46_000 - 2_000
 
 
 def test_seven_sections_exclude_live_decision_card(tmp_path):
@@ -164,13 +174,38 @@ def test_seven_sections_exclude_live_decision_card(tmp_path):
     assert store.cards_path.read_bytes() == before
 
 
-def test_whole_wake_card_fits_one_client_view():
-    # Identity and governance remain whole; section budgets count UTF-8 bytes.
-    # Reserve 2,000 bytes of the client view for JSON escaping and headings.
-    from tools import names
-
-    whole = sum(len((ROOT / names.rel(key)).read_bytes())
-                for key in ("identity", "governance"))
-    config = json.loads((ROOT / "config/cards.json").read_text(encoding="utf-8"))
-    assert whole + sum(config["wake_sections"].values()) <= config["wake_card_bytes"]
-    assert config["wake_card_bytes"] <= 46_000 - 2_000
+def test_whole_wake_limit_drops_last_section_first_and_keeps_identity(tmp_path):
+    store, add, read, config, config_path = fixture(tmp_path)
+    add("rule", "KEEP RULE " * 20)
+    checking = add("reflection", "CHECK LATER " * 25, status="recheck")
+    here = add("relationship", "HERE Place 93 " * 20)
+    before = store.cards_path.read_bytes()
+    full = read(here_tags=["place:93"])
+    config["wake_card_bytes"] = full["total_bytes"] + 100
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    identity = "Made-up identity." + "日" * 100
+    (tmp_path / "identity.md").write_text(identity, encoding="utf-8")
+    result = read(here_tags=["place:93"])
+    assert result["dropped_cards"] == 1
+    assert identity in section(result, "Who I am")
+    assert "Made-up governance." in section(result, "Who I am")
+    assert here["text"] not in section(result, "What's here")
+    assert "1 more card(s) left out" in section(result, "What's here")
+    assert checking["text"] in section(result, "What needs checking")
+    assert "KEEP RULE" in section(result, "Rules")
+    assert result["total_bytes"] == len(result["text"].encode("utf-8"))
+    assert result["total_bytes"] <= config["wake_card_bytes"]
+    for info in result["sections"]:
+        assert info["bytes"] == len(section(result, info["name"]).encode("utf-8"))
+    config["wake_card_bytes"] = result["total_bytes"] - 1
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+    smaller = read(here_tags=["place:93"])
+    assert smaller["dropped_cards"] == 2
+    assert checking["text"] not in section(smaller, "What needs checking")
+    assert "1 more card(s) left out" in section(smaller, "What needs checking")
+    assert "KEEP RULE" in section(smaller, "Rules")
+    assert smaller["total_bytes"] <= config["wake_card_bytes"]
+    assert store.cards_path.read_bytes() == before
+    (tmp_path / "identity.md").write_text("日" * config["wake_card_bytes"], encoding="utf-8")
+    with pytest.raises(CardError, match="wake_card_bytes"):
+        read(here_tags=["place:93"])
