@@ -8,7 +8,7 @@ from tools.cards import CardStore, read_wake_card
 
 ROOT = Path(__file__).resolve().parents[1]
 NAMES = ["Who I am", "What I was doing", "What I owe", "Open threads (index)",
-         "Decisions", "Rules", "What needs checking", "What's here"]
+         "Rules", "What needs checking", "What's here"]
 
 
 def fixture(tmp_path):
@@ -19,7 +19,7 @@ def fixture(tmp_path):
     naming.write_text(json.dumps({"dirs": {"memory": "memory"}, "paths": {
         "identity": identity, "governance": "governance.md"}}), encoding="utf-8")
     config = json.loads((ROOT / "config/cards.json").read_text(encoding="utf-8"))
-    config["wake_sections"].update(thread_index=2000, decisions=5000, rules=3000)
+    config["wake_sections"].update(thread_index=2000, rules=3000)
     config_path = tmp_path / "config.json"
     config_path.write_text(json.dumps(config), encoding="utf-8")
     store = CardStore(tmp_path / "memory", ROOT / "config/tag-patterns.city.json")
@@ -40,7 +40,7 @@ def section(result, name):
     return result["text"][start:] if end < 0 else result["text"][start:end]
 
 
-def test_eight_sections_in_order_and_text_once(tmp_path):
+def test_seven_sections_in_order_and_text_once(tmp_path):
     store, add, read, _, _ = fixture(tmp_path)
     add("rule", "Made-up rule.")
     before = store.cards_path.read_bytes()
@@ -67,18 +67,6 @@ def test_thread_index_titles_tags_newest_and_no_bodies(tmp_path):
     assert "Recall a thread with read_card(card_id=\"<id>\") or recall(tags=[...])." in body
 
 
-def test_decisions_full_text_in_file_order(tmp_path):
-    store, add, read, _, _ = fixture(tmp_path)
-    later = add("decision", "Second full decision.")
-    earlier = add("decision", "First full decision.")
-    store.append_version(later, origin={"file": "continuity.md", "order": 2})
-    store.append_version(earlier, origin={"file": "continuity.md", "order": 1})
-    add("decision", "Retired decision.", status="done")
-    body = section(read(), "Decisions")
-    assert body.index(earlier["text"]) < body.index(later["text"])
-    assert "Retired" not in body
-
-
 def test_rules_live_newest_and_recheck_only_in_checking(tmp_path):
     store, add, read, _, _ = fixture(tmp_path)
     old = add("rule", "Older full rule.")
@@ -98,7 +86,6 @@ def test_rules_live_newest_and_recheck_only_in_checking(tmp_path):
 
 @pytest.mark.parametrize("kind,name,key", [
     ("thread", "Open threads (index)", "thread_index"),
-    ("decision", "Decisions", "decisions"),
     ("rule", "Rules", "rules"),
 ])
 def test_new_sections_respect_budget_without_partial_cards(tmp_path, kind, name, key):
@@ -160,6 +147,21 @@ def test_unlisted_threads_are_named(tmp_path):
     assert "2 more thread(s) not listed" in body
     assert all(card["id"] in body for card in huge)
     assert "HUGE" not in body
+
+
+
+
+def test_seven_sections_exclude_live_decision_card(tmp_path):
+    store, add, read, _, _ = fixture(tmp_path)
+    card = add("decision", "Historical compass choice.")
+    before = store.cards_path.read_bytes()
+    result = read()
+    assert [s["name"] for s in result["sections"]] == NAMES
+    assert len(result["sections"]) == 7
+    for name in NAMES:
+        body = section(result, name)
+        assert card["text"] not in body and card["id"] not in body
+    assert store.cards_path.read_bytes() == before
 
 
 def test_whole_wake_card_fits_one_client_view():

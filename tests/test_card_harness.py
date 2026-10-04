@@ -20,7 +20,6 @@ SOURCES = {
     "memory/lessons.md": names.rel("lessons"),
     "memory/city-rules.md": names.rel("city_rules"),
     "memory/open-threads.md": names.rel("open_threads"),
-    "memory/continuity.md": names.rel("continuity"),
     "memory/journal": names.rel("journal"),
     "memory/residents": names.rel("residents"),
 }
@@ -48,7 +47,7 @@ def repo(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("writer", [
-    "append_lesson", "propose_city_rule", "update_open_threads", "update_continuity",
+    "append_lesson", "propose_city_rule", "update_open_threads",
     "update_goals", "write_journal", "file_unrecorded", "upsert_resident",
 ])
 def test_each_writer_recuts_its_own_files_once(repo, monkeypatch, writer):
@@ -63,9 +62,6 @@ def test_each_writer_recuts_its_own_files_once(repo, monkeypatch, writer):
     elif writer == "update_open_threads":
         result = harness.update_open_threads(names.heading("open_threads") + "\n\n- **Compass** Keep looking.\n")
         expected = [("open_threads", names.rel("open_threads"))]
-    elif writer == "update_continuity":
-        result = harness.update_continuity(names.heading("continuity") + "\n\n## Choice\n- Keep the compass.\n")
-        expected = [("continuity", names.rel("continuity"))]
     elif writer == "update_goals":
         result = harness.update_goals("# Goals\n\n## Compass\nFind it.\n")
         expected = [("goals", names.rel("goals"))]
@@ -128,7 +124,7 @@ def test_card_tools_bootstrap_and_respond(repo, tool):
     else:
         result = harness.read_wake_card(here_tags=["name:mira"])
         assert "Made-up identity whole." in result["text"]
-        assert len(result["sections"]) == 8
+        assert len(result["sections"]) == 7
         assert all("text" not in section for section in result["sections"])
     assert store.is_file()
 

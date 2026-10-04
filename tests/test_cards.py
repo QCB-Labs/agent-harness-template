@@ -111,7 +111,7 @@ def test_migration_cuts_all_logical_files_and_reviews_lessons(tmp_path: Path) ->
     assert all(card["status"] == "recheck" for card in lesson_cards)
     assert (output / "cards" / "kind-review.md").is_file()
     assert {card["origin"]["logical"] for card in cards} == {
-        "lessons", "city_rules", "open_threads", "goals", "continuity", "journal", "residents"
+        "lessons", "city_rules", "open_threads", "goals", "journal", "residents"
     }
 
 
@@ -146,36 +146,19 @@ def test_goals_at_fixture_root_become_goal_cards(tmp_path: Path) -> None:
     assert all(card["origin"]["file"] == "goals.md" for card in goals)
 
 
-def test_continuity_cuts_five_top_level_bullets_and_round_trips(tmp_path: Path) -> None:
-    source = tmp_path / "source"
-    shutil.copytree(FIXTURE, source)
-    continuity = source / "memory" / "continuity.md"
-    continuity.write_bytes(
-        b"# Continuity\n\nPreface.\n\n## First\nBefore.\n- one\n- two\n\n"
-        b"## Second\nIntro.\n- three\n- four\n- five"
-    )
-    cards = migrate(source, source / "naming.json", CITY, output_root=tmp_path / "output")
-    decisions = [card for card in cards if card["origin"]["logical"] == "continuity"]
-    expected = 5
-    assert len(decisions) == expected
-    generated = tmp_path / "generated"
-    generate_views(tmp_path / "output" / "cards" / "cards.jsonl", generated)
-    assert (generated / "memory" / "continuity.md").read_bytes() == continuity.read_bytes()
-
-
 def test_round_trip_preserves_crlf_and_missing_final_newline(tmp_path: Path) -> None:
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
     lessons = source / "memory" / "lessons.md"
-    continuity = source / "memory" / "continuity.md"
     lessons.write_bytes(b"# Lessons\r\n\r\n## 2026-09-01-0900\r\n\r\n- Keep CRLF.\r\n")
-    continuity.write_bytes(b"# Continuity\n\n## Choice\n- Keep LF without a final newline")
+    threads = source / "memory" / "open-threads.md"
+    threads.write_bytes(b"# Open Threads\n\n- **Choice** Keep LF without a final newline")
     migrate(source, source / "naming.json", CITY, output_root=tmp_path / "output")
     generated = tmp_path / "generated"
     generate_views(tmp_path / "output" / "cards" / "cards.jsonl", generated)
     expected = lessons.read_bytes()
     assert (generated / "memory" / "lessons.md").read_bytes() == expected
-    assert (generated / "memory" / "continuity.md").read_bytes() == continuity.read_bytes()
+    assert (generated / "memory" / "open-threads.md").read_bytes() == threads.read_bytes()
 
 
 def test_no_id_dossier_is_recheck_and_reported(tmp_path: Path) -> None:
@@ -278,7 +261,7 @@ def test_recall_does_not_change_cards_and_ranks_tags_weight_newest(tmp_path: Pat
     assert store.cards_path.read_bytes() == raw
 
 
-def test_read_wake_card_has_eight_ordered_sections(tmp_path: Path) -> None:
+def test_read_wake_card_has_seven_ordered_sections(tmp_path: Path) -> None:
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
     (source / "SOUL.md").write_text("Identity whole.", encoding="utf-8")
@@ -289,7 +272,7 @@ def test_read_wake_card_has_eight_ordered_sections(tmp_path: Path) -> None:
     (source / "naming.json").write_text(json.dumps(naming), encoding="utf-8")
     migrate(source, source / "naming.json", CITY, output_root=source / "memory")
     result = read_wake_card(source, source / "naming.json", config_path=ROOT / "config" / "cards.json", here_tags=["name:mira"])
-    section_names = ["## Who I am", "## What I was doing", "## What I owe", "## Open threads (index)", "## Decisions", "## Rules", "## What needs checking", "## What's here"]
+    section_names = ["## Who I am", "## What I was doing", "## What I owe", "## Open threads (index)", "## Rules", "## What needs checking", "## What's here"]
     headings = sorted(section_names, key=result["text"].index)
     expected = headings
     assert expected == section_names
@@ -338,3 +321,14 @@ def test_recall_names_five_left_out_cards_and_counts_the_rest(tmp_path: Path) ->
     assert result["left_out"] == 6 and len(result["left_out_cards"]) == 6
     assert result["message"].count("tokens):") == 5
     assert "and 1 more in left_out_cards" in result["message"]
+
+
+def test_decision_card_can_still_be_read_and_recalled(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    card = store.write({"kind": "decision", "text": "Historical compass choice."},
+                       wake="test", source="self", channel="session")
+    before = store.cards_path.read_bytes()
+    assert read_card(tmp_path, card["id"])["card"] == card
+    result = recall(tmp_path, tags=[], kinds=["decision"], config_path=ROOT / "config" / "cards.json")
+    assert result["cards"] == [card]
+    assert store.cards_path.read_bytes() == before

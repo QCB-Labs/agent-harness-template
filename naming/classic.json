@@ -18,7 +18,6 @@
     "lessons": "{memory}/lessons.md",
     "wishlist": "{memory}/wishlist.md",
     "wishlist_archive": "{memory}/wishlist-archive.md",
-    "continuity": "{memory}/continuity.md",
     "open_threads": "{memory}/open-threads.md",
     "city_rules": "{memory}/city-rules.md"
   },
@@ -26,7 +25,6 @@
     "identity": "# PERSONA",
     "governance": "# RULES",
     "operator": "# OPERATOR",
-    "continuity": "# Continuity",
     "open_threads": "# Open Threads",
     "works_index": "# Outputs index"
   },

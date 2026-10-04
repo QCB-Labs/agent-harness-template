@@ -2530,7 +2530,7 @@ def archive_draft(
 
 
 # ---------------------------------------------------------------------------
-# Structural Gaps: Open Threads, Works Catalogue, and Continuity
+# Structural Gaps: Open Threads and Works Catalogue
 # ---------------------------------------------------------------------------
 
 
@@ -2608,24 +2608,8 @@ def update_works_index(new_text: str) -> str:
     return f"{names.rel('works')}/index.md updated ({len(new_text)} chars)."
 
 
-@mcp.tool(name=names.tool("read_continuity"))
-def read_continuity() -> str:
-    """Return durable decisions and architectural facts from memory/continuity.md."""
-    return _read_text(Path(names.rel("continuity")), "(no continuity file found)")
 
 
-@mcp.tool(name=names.tool("update_continuity"))
-def update_continuity(new_text: str) -> str:
-    """Replace the durable decisions and architectural record in memory/continuity.md."""
-    with _file_lock("continuity"):
-        cont_file = REPO / names.rel("continuity")
-        written, refusal, _ = safe_replace_file(
-            cont_file, new_text, 200, 0.50, names.heading("continuity")
-        )
-        if not written:
-            return refusal or "REFUSED — unsafe continuity replacement."
-    _recut_after_write("continuity", cont_file)
-    return f"{names.rel('continuity')} updated ({len(new_text)} chars)."
 
 
 if __name__ == "__main__":

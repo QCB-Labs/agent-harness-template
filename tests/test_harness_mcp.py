@@ -961,8 +961,6 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("read_work"),
         names.tool("upsert_work"),
         names.tool("update_works_index"),
-        names.tool("read_continuity"),
-        names.tool("update_continuity"),
     ]
 
     by_name = {tool.name: tool for tool in tools}
@@ -1040,8 +1038,6 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("read_work"),
         names.tool("upsert_work"),
         names.tool("update_works_index"),
-        names.tool("read_continuity"),
-        names.tool("update_continuity"),
     ]
     tools_dir = tmp_path / "tools"
     tools_dir.mkdir()
@@ -1580,7 +1576,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 58
+    assert len(tools) == 56
 
 
 
@@ -2668,7 +2664,7 @@ def test_stage_read_and_archive_draft(isolated_repo: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Structural Gaps: Open Threads, Works Catalogue, and Continuity Tests
+# Structural Gaps: Open Threads and Works Catalogue Tests
 # ---------------------------------------------------------------------------
 
 
@@ -2744,23 +2740,6 @@ def test_works_catalogue_items_lifecycle_and_security(isolated_repo: Path) -> No
     assert harness_mcp.read_work("bad slug with spaces") == "REFUSED — invalid work slug."
 
 
-def test_continuity_read_and_update(isolated_repo: Path) -> None:
-    # 1. Missing file returns fallback
-    assert harness_mcp.read_continuity() == "(no continuity file found)"
-
-    # 2. Update writes file and returns confirmation
-    sample_continuity = (
-        f"{names.heading('continuity')}\n\n"
-        "## Identity and purpose\n"
-        "- The agent is resident #1.\n"
-        + ("- Preserve durable decisions and verified architectural facts.\n" * 4)
-    )
-    result = harness_mcp.update_continuity(sample_continuity)
-    assert f"{names.rel('continuity')} updated" in result
-    assert str(len(sample_continuity)) in result
-
-    # 3. Read returns updated content
-    assert harness_mcp.read_continuity() == sample_continuity
 
 
 def test_structural_gaps_file_locks(isolated_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2794,8 +2773,6 @@ def test_structural_gaps_file_locks(isolated_repo: Path, monkeypatch: pytest.Mon
     harness_mcp.upsert_work("sample-work", "sample content")
     assert acquired_locks.count("works") == 2
 
-    harness_mcp.update_continuity("continuity text")
-    assert "continuity" in acquired_locks
 
 
 @pytest.mark.parametrize(
@@ -2816,12 +2793,6 @@ def test_structural_gaps_file_locks(isolated_repo: Path, monkeypatch: pytest.Mon
                 f"{names.heading('works_index')}\n\n" + "x" * 120, encoding="utf-8"
             ),
             lambda: harness_mcp.update_works_index("tiny"),
-        ),
-        (
-            lambda repo: (repo / names.rel("continuity")).write_text(
-                f"{names.heading('continuity')}\n\n" + "x" * 300, encoding="utf-8"
-            ),
-            lambda: harness_mcp.update_continuity("tiny"),
         ),
         (
             lambda repo: (repo / names.rel("works") / "items" / "test.md").write_text(

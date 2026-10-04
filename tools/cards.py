@@ -16,7 +16,7 @@ SYSTEM_FIELDS = frozenset(
     {"id", "tags", "created_at", "updated_at", "wake", "source", "channel", "weight", "origin"}
 )
 LOGICAL_NAMES = (
-    "lessons", "city_rules", "open_threads", "goals", "continuity", "journal", "residents"
+    "lessons", "city_rules", "open_threads", "goals", "journal", "residents"
 )
 VALID_KINDS = {
     "goal", "commitment", "thread", "rule", "reflection", "decision",
@@ -263,21 +263,6 @@ def _segments(text: str, marker: re.Pattern[str], logical: str, path: Path) -> l
     return result
 
 
-def _continuity_segments(text: str, path: Path) -> list[tuple[int, str]]:
-    bullets = list(re.finditer(r"(?m)^- (?! )[^\r\n]+", text))
-    if not bullets:
-        raise MigrationFormatError(f"continuity: no valid cut marker in {path}")
-    starts = [0]
-    heading = re.compile(r"(?m)^#{2,3} [^\r\n]+")
-    for previous, current in zip(bullets, bullets[1:]):
-        headings = list(heading.finditer(text, previous.end(), current.start()))
-        starts.append(headings[0].start() if headings else current.start())
-    return [
-        (bullets[index].start(), text[starts[index]: starts[index + 1] if index + 1 < len(starts) else len(text)])
-        for index in range(len(bullets))
-    ]
-
-
 def _read_source_text(path: Path) -> str:
     with Path(path).open("r", encoding="utf-8", newline="") as handle:
         return handle.read()
@@ -325,8 +310,6 @@ def _pieces_for(logical: str, text: str, path: Path) -> list[tuple[int, str]]:
         return _segments(text, re.compile(r"(?m)^- \*\*.+?\*\*[^\r\n]*"), logical, path)
     if logical == "goals":
         return _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)"), logical, path)
-    if logical == "continuity":
-        return _continuity_segments(text, path)
     if not text:
         raise MigrationFormatError(f"{logical}: empty source file: {path}")
     return [(0, text)]
@@ -413,8 +396,6 @@ def _card_spec(
             supplied["status"] = "done"
     elif logical == "goals":
         supplied["kind"] = "goal"
-    elif logical == "continuity":
-        supplied["kind"] = "decision"
     elif logical == "journal":
         supplied["kind"] = "log"
         wake = _wake_from_path(path)
@@ -812,7 +793,7 @@ def _wake_added_section(name: str, candidates: list[dict[str, Any]], budget: int
             # Name them: an open thread that isn't listed must still be findable.
             body += f"\n\n{len(missing)} more thread(s) not listed: {', '.join(missing)}. Read each with read_card(card_id=\"<id>\")."
         elif missing:
-            kind = {"Decisions": "decision", "Rules": "rule"}[name]
+            kind = {"Rules": "rule"}[name]
             body += f'\n\n{len(missing)} more card(s) left out. Use recall(kinds=["{kind}"]) with narrower tags.'
         return body
 
@@ -858,7 +839,6 @@ def read_wake_card(
     doing.extend(c for c in cards if c["kind"] == "goal" and c["status"] == "live")
     owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])
     threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
-    decisions = sorted((c for c in cards if c["kind"] == "decision" and c["status"] == "live"), key=lambda c: ((c.get("origin") or {}).get("file", ""), (c.get("origin") or {}).get("order", 0)))
     rules = _file_order([c for c in cards if c["kind"] == "rule" and c["status"] == "live"])
     checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["created_at"]), reverse=True)
     withheld_rules = {
@@ -875,14 +855,13 @@ def read_wake_card(
         ("What I was doing", doing, int(cfg["what_i_was_doing"])),
         ("What I owe", owing, int(cfg["what_i_owe"])),
         ("Open threads (index)", threads, int(cfg["thread_index"])),
-        ("Decisions", decisions, int(cfg["decisions"])),
         ("Rules", rules, int(cfg["rules"])),
         ("What needs checking", checking, int(cfg["what_needs_checking"])),
         ("What's here", here, int(cfg["whats_here"])),
     ]
     sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "tokens": _tokens(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
     for name, candidates, budget in groups:
-        if name in {"Open threads (index)", "Decisions", "Rules"}:
+        if name in {"Open threads (index)", "Rules"}:
             section = _wake_added_section(name, candidates, budget)
             if name == "Rules" and any(withheld_rules.values()):
                 note = (

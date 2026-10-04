@@ -214,7 +214,7 @@ def text_files(repo: Path):
 def rewrite_headings(repo: Path, current: dict, target: dict) -> list[str]:
     changed = []
     owners = {"identity": "identity", "governance": "governance", "operator": "operator",
-              "continuity": "continuity", "open_threads": "open_threads"}
+              "open_threads": "open_threads"}
     for heading_key, path_key in owners.items():
         old, new = current["headings"][heading_key], target["headings"][heading_key]
         path = repo / rel(target, path_key)

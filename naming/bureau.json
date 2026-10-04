@@ -18,7 +18,6 @@
     "lessons": "{memory}/incident-lessons.md",
     "wishlist": "{memory}/requisitions.md",
     "wishlist_archive": "{memory}/requisitions-archive.md",
-    "continuity": "{memory}/precedents.md",
     "open_threads": "{memory}/open-matters.md",
     "city_rules": "{memory}/city-regulations.md"
   },
@@ -26,7 +25,6 @@
     "identity": "# PERSONNEL FILE",
     "governance": "# STANDING ORDERS",
     "operator": "# SUPERVISOR",
-    "continuity": "# Precedents",
     "open_threads": "# Open Matters",
     "works_index": "# Filings index"
   },
@@ -47,8 +45,6 @@
     "append_lesson": "log_incident_lesson",
     "read_wishlist": "read_requisitions",
     "append_wishlist": "submit_requisition",
-    "read_continuity": "read_precedents",
-    "update_continuity": "set_precedent",
     "read_open_threads": "read_open_matters",
     "update_open_threads": "update_open_matters",
     "read_city_rules": "read_city_regulations",
