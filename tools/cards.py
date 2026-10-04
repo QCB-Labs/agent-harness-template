@@ -811,6 +811,31 @@ def _wake_added_section(
     return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": len(entries) - len(chosen)}
 
 
+_PLAN_HEADING = re.compile(r"(?im)^(#{1,6}) .*\bplan next\b.*$")
+
+
+def _log_number(card: dict[str, Any]) -> int:
+    # "SR-0135-2080-01-01.md" is 135. A name with no letter prefix has no number.
+    match = re.match(r"[A-Za-z]+-?(\d+)", Path(card.get("origin", {}).get("file", "")).name)
+    return int(match.group(1)) if match else -1
+
+
+def _plan_section(text: str) -> str:
+    """A log's own plan for next time, under the log's title line.
+
+    The section runs from the first heading that says "plan next" to the next
+    heading of the same or a higher level. A log with no such heading is
+    returned whole.
+    """
+    match = _PLAN_HEADING.search(text)
+    if not match:
+        return text
+    following = re.compile(rf"(?m)^#{{1,{len(match.group(1))}}} ").search(text, match.end())
+    section = text[match.start():following.start() if following else len(text)].rstrip()
+    title = text.splitlines()[0] if text.startswith("#") and match.start() > 0 else ""
+    return f"{title}\n\n{section}" if title else section
+
+
 def read_wake_card(
     repo_root: Path,
     naming_path: Path,
@@ -837,11 +862,15 @@ def read_wake_card(
     handovers.sort(key=lambda c: c["updated_at"], reverse=True)
     doing: list[dict[str, Any]] = handovers[:1]
     if not doing:
-        logs = sorted((c for c in cards if c["kind"] == "log"), key=lambda c: c["updated_at"], reverse=True)
+        # The newest log is the one with the highest number in its filename.
+        # updated_at moves whenever a log is re-cut, so it can't say which is newest.
+        logs = sorted(
+            (c for c in cards if c["kind"] == "log" and c["status"] == "live"),
+            key=lambda c: (_log_number(c), c["updated_at"]), reverse=True,
+        )
         if logs:
             fallback = dict(logs[0])
-            parts = re.split(r"(?m)(?=^#{1,6} )", fallback["text"])
-            fallback["text"] = parts[-1] if parts else fallback["text"]
+            fallback["text"] = _plan_section(fallback["text"])
             doing.append(fallback)
     doing.extend(c for c in cards if c["kind"] == "goal" and c["status"] == "live")
     owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])

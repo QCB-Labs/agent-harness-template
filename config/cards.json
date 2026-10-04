@@ -2,7 +2,7 @@
   "recall_bytes": 16000,
   "wake_card_bytes": 44000,
   "wake_sections": {
-    "what_i_was_doing": 6400,
+    "what_i_was_doing": 8000,
     "what_i_owe": 1600,
     "thread_index": 4800,
     "rules": 2400,

@@ -295,3 +295,23 @@ def test_city_patterns_extract_invented_tags(memory):
     tags = c.extract_tags(kind='thread', text='Vélvetspoon #20000 moved through routing [9000, 10000] on W9000.',
                           patterns=c.load_patterns(CITY), name_index=source / 'memory/residents/index.md')
     assert tags == ['kind:thread','name:velvetspoon','place:10000','place:9000','resident:20000','wake:w9000']
+
+
+@pytest.mark.parametrize('filename,number', [
+    ('SR-0135-2080-01-01.md', 135), ('W135-2080-01-01.md', 135),
+    ('LOG-0135.md', 135), ('0135-2080-01-01.md', -1), ('SR-no-number.md', -1),
+])
+def test_log_number_accepts_letter_prefixes_and_rejects_unprefixed_dates(filename, number):
+    assert c._log_number({'origin': {'file': 'invented/' + filename}}) == number
+
+
+def test_wake_fallback_ignores_removed_logs(tmp_path):
+    source = tmp_path / 'source'
+    shutil.copytree(FIXTURE, source)
+    migrated = c.migrate(source, source / 'naming.json', CITY, output_root=source / 'memory')
+    store = c.CardStore(source / 'memory', CITY)
+    newest = max((card for card in migrated if card['kind'] == 'log'), key=c._log_number)
+    store.append_version(dict(newest, status='done', status_reason='removed from source file'))
+    doing = bodies(c.read_wake_card(source, source / 'naming.json', config_path=ROOT / 'config/cards.json'))['What I was doing']
+    live = max((card for card in migrated if card['kind'] == 'log' and card['id'] != newest['id']), key=c._log_number)
+    assert live['text'] in doing and newest['text'] not in doing
