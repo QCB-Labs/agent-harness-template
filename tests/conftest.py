@@ -29,6 +29,10 @@ def _isolate_live_state(tmp_path_factory: pytest.TempPathFactory,
     monkeypatch.setattr(phase, "REPO_ROOT", sandbox)
     monkeypatch.setattr(authority, "REPO_ROOT", sandbox)
     monkeypatch.setenv("AGENT_SESSION_DIR", str(sandbox / "session"))
+    # Every test uses made-up patterns and never reads the operator's file.
+    patterns = sandbox / "private-patterns.txt"
+    patterns.write_text("made-up-private-name\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_PRIVATE_PATTERNS", str(patterns))
 
 
 # --- Run-safety guard -------------------------------------------------------
