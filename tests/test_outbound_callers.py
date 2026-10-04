@@ -405,7 +405,6 @@ def test_listing_fee_missing_wallet_session_refuses(sandbox, monkeypatch):
 
 
 @pytest.mark.parametrize("name", ["acquire_free_artifact", "purchase_listing"])
-@pytest.mark.xfail(strict=True, reason="Missing Market token falls through to public download and records an acquisition.")
 def test_free_acquisition_missing_token_refuses(sandbox, monkeypatch, name, tmp_path):
     monkeypatch.setattr(credentials, "get_market_token", lambda: "")
     monkeypatch.setattr(market, "inspect_listing", lambda listing_id: {

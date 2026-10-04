@@ -379,6 +379,15 @@ def acquire_free_artifact(listing_id: int, purpose: str) -> dict:
     content = ""
     # Officially acquire the free listing via POST /api/buy
     buy_res = _market_request("POST", f"/api/buy/{listing_id}", require_auth=True)
+    if isinstance(buy_res, dict) and buy_res.get("error") == "UNAUTHENTICATED":
+        # No login means the Market never hears of this. Taking the public
+        # download anyway would leave the local and market records disagreeing, and
+        # would hide a broken login.
+        return {
+            "status": "REFUSED",
+            "error": "UNAUTHENTICATED",
+            "message": "REFUSED: no Market login token, so nothing was acquired. Tell the operator the Market token is missing.",
+        }
     if isinstance(buy_res, dict) and "artifact" in buy_res and buy_res["artifact"] != f"purchase required — POST /api/buy/{listing_id}":
         content = buy_res["artifact"]
     elif isinstance(buy_res, dict) and "content" in buy_res:
