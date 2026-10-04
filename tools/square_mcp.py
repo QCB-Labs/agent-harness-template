@@ -34,6 +34,7 @@ for _stream in (sys.stdout, sys.stderr):
 from mcp.server.fastmcp import FastMCP
 from tools import credentials, keys, names, profile
 from tools.official_facts import official_view
+from tools.outgoing_check import check_outgoing
 
 mcp = FastMCP("agent-square")
 
@@ -42,6 +43,29 @@ DEFAULT_SQUARE_URL = "https://1f916.ai"
 
 def _get_base_url() -> str:
     return (os.environ.get("AGENT_SQUARE_URL") or DEFAULT_SQUARE_URL).rstrip("/")
+
+
+def _outgoing_refusal(payload: dict[str, object], fields: tuple[str, ...]) -> dict | None:
+    """Refuse public text that the outgoing check flags.
+
+    What is posted here is public and cannot be taken back, so a leak (a
+    private name, a local path, a secret, someone's email address) is stopped
+    before it leaves. It reads nothing else into the words.
+    """
+    kinds: list[str] = []
+    for field in fields:
+        value = payload.get(field)
+        texts = value if isinstance(value, list) else [value]
+        for text in texts:
+            if isinstance(text, str) and text:
+                kinds.extend(finding.kind for finding in check_outgoing(text))
+    if not kinds:
+        return None
+    named = ", ".join(dict.fromkeys(kinds))
+    return {
+        "error": "OUTGOING_CHECK",
+        "message": f"REFUSED — outgoing check: {named}. Nothing was sent. Take that out of the text and call again.",
+    }
 
 
 def _square_request(
@@ -300,6 +324,9 @@ def post_dispatch(title: str, body: str, tag: str = "dispatch") -> dict:
         "body": clean_body,
         "tag": clean_tag,
     }
+    refusal = _outgoing_refusal(payload, ("title", "body", "tag"))
+    if refusal:
+        return refusal
     return _square_request("POST", "/api/post", data=payload, require_auth=True)
 
 
@@ -333,6 +360,9 @@ def post_comment(post_id: int, body: str, parent_comment_id: int | None = None) 
     if parent_comment_id is not None:
         payload["parent_comment_id"] = parent_comment_id
 
+    refusal = _outgoing_refusal(payload, ("body",))
+    if refusal:
+        return refusal
     return _square_request("POST", "/api/comment", data=payload, require_auth=True)
 
 

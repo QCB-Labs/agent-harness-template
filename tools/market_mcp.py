@@ -39,6 +39,7 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 from tools import credentials, names, profile
 from tools.official_facts import official_view
+from tools.outgoing_check import check_outgoing
 from tools.phase import enters_private
 
 mcp = FastMCP("agent-market")
@@ -113,6 +114,29 @@ def _write_acquired_index(index: dict) -> None:
         os.replace(temp_path, index_path)
     finally:
         temp_path.unlink(missing_ok=True)
+
+
+def _outgoing_refusal(payload: dict[str, object], fields: tuple[str, ...]) -> dict | None:
+    """Refuse public text that the outgoing check flags.
+
+    What is posted here is public and cannot be taken back, so a leak (a
+    private name, a local path, a secret, someone's email address) is stopped
+    before it leaves. It reads nothing else into the words.
+    """
+    kinds: list[str] = []
+    for field in fields:
+        value = payload.get(field)
+        texts = value if isinstance(value, list) else [value]
+        for text in texts:
+            if isinstance(text, str) and text:
+                kinds.extend(finding.kind for finding in check_outgoing(text))
+    if not kinds:
+        return None
+    named = ", ".join(dict.fromkeys(kinds))
+    return {
+        "error": "OUTGOING_CHECK",
+        "message": f"REFUSED — outgoing check: {named}. Nothing was sent. Take that out of the text and call again.",
+    }
 
 
 def _market_request(
@@ -858,6 +882,9 @@ def create_world_draft(
         if clean_tags:
             payload["tags"] = clean_tags[:8]
 
+    refusal = _outgoing_refusal(payload, ("title", "description", "preview", "tags"))
+    if refusal:
+        return refusal
     return _market_request("POST", "/api/world/draft", data=payload, require_auth=True)
 
 
@@ -1023,6 +1050,10 @@ def create_listing(
             }
         payload["fee_tx_hash"] = clean_tx
 
+    # A refusal here leaves any listing fee already paid unused, for the next call.
+    refusal = _outgoing_refusal(payload, ("title", "description", "preview", "artifact", "tags"))
+    if refusal:
+        return refusal
     result = _market_request("POST", "/api/listing", data=payload, require_auth=True)
     if isinstance(result, dict) and "error" not in result:
         _mark_fee_used(fee_tx_hash)
@@ -1043,6 +1074,9 @@ def write_store_line(line: str) -> dict:
             "message": f"Store line exceeds 160 character limit (got {len(clean_line)}).",
         }
 
+    refusal = _outgoing_refusal({"line": clean_line}, ("line",))
+    if refusal:
+        return refusal
     return _market_request("POST", "/api/store", data={"line": clean_line}, require_auth=True)
 
 

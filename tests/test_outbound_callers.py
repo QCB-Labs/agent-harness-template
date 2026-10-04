@@ -195,18 +195,23 @@ def _mail_call(name, calls):
     return harness.notify_crash("Illustrative summary")
 
 
-@pytest.mark.parametrize("name", [pytest.param(name, marks=pytest.mark.xfail(strict=True,
-    reason="Operator email findings warn and send instead of refusing.")) if name in OPERATOR_PATHS else name
-    for name in MAIL_PATHS])
+@pytest.mark.parametrize("name", sorted(set(MAIL_PATHS) - OPERATOR_PATHS))
 def test_mail_caller_finding_refuses(sandbox, monkeypatch, name):
     _finding(monkeypatch, sandbox)
     result = _mail_call(name, sandbox)
     assert sandbox["smtp"] == []
     assert sandbox["check"]
-    if name in ("reply_peer", "reply_operator", "new_peer", "new_operator"):
-        assert _refused(result)
-    if isinstance(result, dict):
-        assert result["emailed"] is False
+    assert _refused(result)
+
+
+@pytest.mark.parametrize("name", sorted(OPERATOR_PATHS))
+def test_operator_mail_with_a_finding_is_warned_and_sent(sandbox, monkeypatch, name):
+    # Operator mail warns and sends so the agent can report problems.
+    _finding(monkeypatch, sandbox)
+    _mail_call(name, sandbox)
+    assert sandbox["check"]
+    assert len(sandbox["smtp"]) == 1
+    assert len(sandbox["smtp"][0]["messages"]) == 1
 
 
 @pytest.mark.parametrize("name", MAIL_PATHS)
@@ -218,8 +223,11 @@ def test_mail_caller_clean_sends(sandbox, name):
     assert "Illustrative" in sandbox["check"][0][0]
 
 
-HTTP_TEXT = ["post_dispatch", "post_comment", "search_square", "create_world_draft",
-             "create_listing", "write_store_line", "browse_shelves_aisle", "browse_shelves_sort"]
+# Public and permanent: checked before it leaves.
+HTTP_POSTED = ["post_dispatch", "post_comment", "create_world_draft", "create_listing", "write_store_line"]
+# Search and browse queries are sent without outgoing checks.
+HTTP_QUERIES = ["search_square", "browse_shelves_aisle", "browse_shelves_sort"]
+HTTP_TEXT = HTTP_POSTED + HTTP_QUERIES
 HTTP_AUTH = ["post_dispatch", "post_comment", "vote_post", "bind_signing_key", "read_square_profile",
              "read_square_quotas", "create_world_draft", "create_listing", "write_store_line",
              "activate_world_listing", "cancel_world_draft", "withdraw_listing", "read_merchant_profile"]
@@ -256,14 +264,22 @@ def _http_call(name):
     return getattr(module, name)()
 
 
-@pytest.mark.parametrize("name", HTTP_TEXT)
-@pytest.mark.xfail(strict=True, reason="Square/Market outbound text paths never run the outgoing check.")
+@pytest.mark.parametrize("name", HTTP_POSTED)
 def test_http_text_caller_finding_refuses(sandbox, monkeypatch, name):
     _finding(monkeypatch, sandbox)
     result = _http_call(name)
     assert sandbox["http"] == []
     assert sandbox["check"]
     assert _refused(result)
+    assert result["error"] == "OUTGOING_CHECK" and "Nothing was sent" in result["message"]
+
+
+@pytest.mark.parametrize("name", HTTP_QUERIES)
+def test_http_query_is_sent_unchecked(sandbox, monkeypatch, name):
+    _finding(monkeypatch, sandbox)
+    _http_call(name)
+    assert sandbox["check"] == []
+    assert len(sandbox["http"]) == 1
 
 
 @pytest.mark.parametrize("name", HTTP_TEXT)
