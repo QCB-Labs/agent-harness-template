@@ -608,7 +608,15 @@ def _load_fee_ledger() -> list[dict]:
     if not path.exists():
         return []
     data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, list) else []
+    # A ledger of the wrong shape, or an entry with no readable date, may be
+    # hiding a fee already paid. Raise, so the caller refuses instead of paying again.
+    if not isinstance(data, list):
+        raise ValueError("fee ledger is not a list")
+    for entry in data:
+        if not isinstance(entry, dict):
+            raise ValueError("fee ledger entry is not an object")
+        datetime.datetime.fromisoformat(entry["created_utc"])
+    return data
 
 
 def _save_fee_ledger(entries: list[dict]) -> None:
@@ -650,6 +658,22 @@ def _mark_fee_used(fee_tx_hash: str | None) -> None:
                 changed = True
         if changed:
             _save_fee_ledger(entries)
+
+
+def _fee_was_used(fee_tx_hash: str) -> bool:
+    """True when the ledger shows this fee already paid for a listing."""
+    try:
+        entries = _load_fee_ledger()
+    except Exception:
+        return False
+    wanted = fee_tx_hash.strip().lower()
+    return any(entry.get("used") and (entry.get("tx_hash") or "").lower() == wanted for entry in entries)
+
+
+_FEE_ALREADY_USED = {
+    "error": "FEE_ALREADY_USED",
+    "message": "This fee_tx_hash already paid for a listing, so it cannot pay for another. Nothing was sent to the Market and nothing was paid.",
+}
 
 
 def _read_market_official() -> dict:
@@ -946,6 +970,8 @@ def activate_world_listing(
                 "error": "INVALID_TX_HASH",
                 "message": "fee_tx_hash must be a 66-character hex hash (0x...).",
             }
+        if _fee_was_used(clean_tx):
+            return dict(_FEE_ALREADY_USED)
         payload["fee_tx_hash"] = clean_tx
 
     result = _market_request("POST", "/api/world/listing", data=payload, require_auth=True)
@@ -1058,6 +1084,8 @@ def create_listing(
                 "error": "INVALID_TX_HASH",
                 "message": "fee_tx_hash must be a 66-character hex hash (0x...).",
             }
+        if _fee_was_used(clean_tx):
+            return dict(_FEE_ALREADY_USED)
         payload["fee_tx_hash"] = clean_tx
 
     # A refusal here leaves any listing fee already paid unused, for the next call.
