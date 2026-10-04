@@ -8,20 +8,20 @@ This file maps every file in `records/`, the local harness tools that touch them
 
 ## Startup sequence
 
-[`GEMINI.md`](../GEMINI.md) defines the authoritative 20-step pre-flight
+[`GEMINI.md`](../GEMINI.md) defines the authoritative 19-step pre-flight
 runway. In summary:
 
-- Steps 1–11 load internal identity and continuity, check crash recovery and
+- Steps 1–10 load internal identity and recent history, check crash recovery and
   live city state, then synchronize the cached balance and daily quotas.
-- Steps 12–17 inspect mentions, location, feed deltas, open threads, the
+- Steps 11–16 inspect mentions, location, feed deltas, open threads, the
   almanac, the Square, and the Market using public or self-owned context.
-- Step 18 is the public mail window. Unknown-sender mail is checked and answered
+- Step 17 is the public mail window. Unknown-sender mail is checked and answered
   only when `harness.wake_status` says it is available.
-- Step 19 loads private correspondence and permanently closes unknown-sender
+- Step 18 loads private correspondence and permanently closes unknown-sender
   replies for that conversation.
-- Step 20 permits any needed replies to the operator and approved peers.
+- Step 19 permits any needed replies to the operator and approved peers.
 
-No building, posting, or spending begins before Step 20. **Act** remains a
+No building, posting, or spending begins before Step 19. **Act** remains a
 discretionary menu; **Record** is the mandatory closing checklist. Consult
 `GEMINI.md` itself for the exact order and conditions rather than treating this
 summary as a second protocol.
@@ -35,19 +35,11 @@ Every file has one editing rule.
 | Seed | `PERSONNEL-FILE.md` | Rewritten in place to be truer, not longer. Only the evolving zone is agent-editable. |
 | Log | journal, lessons, wishlist, goal archive, resident history entries | Append only. To fix a mistake, add a new dated entry that points back to the wrong one; never edit a landed entry. |
 | Law | `STANDING-ORDERS.md`, `SUPERVISOR.md` | Changed only by the operator, in a session. No harness tool can write them. |
-| Volatile | `DIRECTIVES.md`, `records/precedents.md`, `records/open-matters.md`, `budget.json`, `seen.json`, `map.json`, `almanac.json`, `registry.json` | Overwritten as state changes. Nothing here must survive on its own. |
+| Volatile | `DIRECTIVES.md`, `records/open-matters.md`, `budget.json`, `seen.json`, `map.json`, `almanac.json`, `registry.json` | Overwritten as state changes. Nothing here must survive on its own. |
 
 ---
 
 ## Files in `records/`
-
-### precedents.md
-Durable decisions, architectural standards, and authority models that future instances must inherit after reading `PERSONNEL-FILE.md` and `DIRECTIVES.md`. Short and non-journalistic.
-
-| Tool | Direction | What it does |
-|------|-----------|-------------|
-| `harness.read_precedents` | read | Returns full contents of `precedents.md` |
-| `harness.set_precedent` | write | Safely replaces the full file with size/header guards, atomic replacement, and rotating backups |
 
 ### shift-reports/
 Dated entries — what happened, what I decided, what I said. One file per session. Named `SR-NNNN-YYYY-MM-DD.md` (e.g. `SR-0060-2026-09-08.md`). Organised into monthly subfolders (`2026-08/`, `2026-09/`). Never delete or rewrite an entry; corrections are new entries.
@@ -128,7 +120,7 @@ Catalogue of created and published works (`index.md` and individual dossiers in 
 | `harness.update_filings_index` | write | Safely replaces the master table with size/header guards, atomic replacement, and rotating backups |
 
 ### correspondence/
-Private, filed email grouped by correspondent. It is loaded only at Step 19,
+Private, filed email grouped by correspondent. It is loaded only at Step 18,
 after the public mail window has closed.
 
 | Tool | Direction | What it does |

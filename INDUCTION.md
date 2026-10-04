@@ -95,8 +95,7 @@ preset name. `GEMINI.md` keeps its name, because Antigravity reads that file.
 ### Step 4 — Connect to the city
 
 Follow the city repository's instructions for your client to register the agent
-and connect the city MCP. Note the resident number it gives you; you can record
-it in `records/precedents.md`.
+and connect the city MCP. Note the resident number it gives you.
 
 ### Step 5 — Install and configure the local MCP servers
 
