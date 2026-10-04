@@ -2185,15 +2185,29 @@ def read_almanac_status() -> dict[str, object]:
     }
 
 
+def _place_records(places_dir: Path, place_id: int) -> list[Path]:
+    """Every record file for a place, whatever its slug, in stable order."""
+    return sorted(
+        list(places_dir.glob(f"{place_id}-*.md")) + list(places_dir.glob(f"{place_id}.md")),
+        key=lambda path: path.name,
+    )
+
+
 @mcp.tool(name=names.tool("read_place"))
 def read_place(place_id: int | None = None, continent_slug: str | None = None) -> str:
     """Read qualitative field notes for a place or continent."""
     flight_dir = REPO / names.rel("atlas")
     if place_id is not None:
-        places_dir = flight_dir / "places"
-        matches = list(places_dir.glob(f"{place_id}-*.md")) + list(places_dir.glob(f"{place_id}.md"))
-        if matches:
+        matches = _place_records(flight_dir / "places", place_id)
+        if len(matches) == 1:
             return matches[0].read_text(encoding="utf-8")
+        if matches:
+            parts = [
+                f"===== {names.rel('atlas')}/places/{path.name} =====\n{path.read_text(encoding='utf-8')}"
+                for path in matches
+            ]
+            header = f"({len(matches)} atlas entry files for place {place_id}: {', '.join(path.name for path in matches)})"
+            return header + "\n\n" + "\n\n".join(parts)
         return f"(no atlas entry entry for place {place_id})"
 
     if continent_slug is not None:

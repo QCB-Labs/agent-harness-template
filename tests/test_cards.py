@@ -311,3 +311,30 @@ def test_read_wake_card_sends_its_text_once(tmp_path: Path) -> None:
     assert whole.count("Identity whole.") == 1
     assert all("text" not in section for section in result["sections"])
     assert result["sections"][0]["name"] == "Who I am"
+
+
+def test_recall_says_what_each_left_out_card_is(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    _write(store, "kept " * 10)
+    untitled = _write(store, "# Made-up log, wake nine\n\n" + "body " * 60)
+    config = tmp_path / "budget.json"
+    config.write_text(json.dumps({"recall_tokens": 25, "wake_sections": {}}), encoding="utf-8")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    entry = result["left_out_cards"][0]
+    assert entry["id"] == untitled["id"]
+    assert entry["title"] == "Made-up log, wake nine"
+    assert entry["tokens"] > 25
+    assert f"{untitled['id']} (rule, {entry['tokens']} tokens): Made-up log, wake nine" in result["message"]
+    assert "body" not in result["message"]
+
+
+def test_recall_names_five_left_out_cards_and_counts_the_rest(tmp_path: Path) -> None:
+    store = _store(tmp_path)
+    for n in range(7):
+        _write(store, f"# Made-up entry {n}\n\n" + "body " * 60)
+    config = tmp_path / "budget.json"
+    config.write_text(json.dumps({"recall_tokens": 100, "wake_sections": {}}), encoding="utf-8")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    assert result["left_out"] == 6 and len(result["left_out_cards"]) == 6
+    assert result["message"].count("tokens):") == 5
+    assert "and 1 more in left_out_cards" in result["message"]

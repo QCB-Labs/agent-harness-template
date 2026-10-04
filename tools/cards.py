@@ -582,6 +582,29 @@ def _tokens(text: str) -> int:
     return math.ceil(len(text) / 4)
 
 
+LEFT_OUT_NAMED = 5
+
+
+def _left_out_entry(card: dict[str, Any]) -> dict[str, Any]:
+    """What a card left out of an answer is: enough to decide whether to read it.
+
+    Logs and lessons carry no title, so the first line of the text stands in.
+    """
+    title = card.get("title") or ""
+    if not title:
+        first = next((line for line in card["text"].splitlines() if line.strip()), "")
+        title = first.strip().lstrip("#-").strip().strip("*:").strip()
+    if len(title) > 80:
+        title = title[:77].rstrip() + "..."
+    return {
+        "id": card["id"],
+        "kind": card["kind"],
+        "title": title,
+        "tokens": _tokens(card["text"]),
+        "from": (card.get("origin") or {}).get("file", ""),
+    }
+
+
 def recall(
     memory_root: Path,
     *,
@@ -629,7 +652,7 @@ def recall(
         "searched": {"tags": sorted(wanted), "text": text, "kinds": kinds, "limit": limit},
         "matched": len(matches),
         "left_out": len(missing),
-        "left_out_cards": [{"id": card["id"], "kind": card["kind"], "title": card.get("title") or ""} for card in missing],
+        "left_out_cards": [_left_out_entry(card) for card in missing],
         "tokens": sum(_tokens(card["text"]) for card in returned),
         "budget": budget,
         "refused": refused,
@@ -638,9 +661,15 @@ def recall(
     if refused:
         result["message"] = f"No card fits: the best match alone is over {budget} tokens. Read it with read_card(card_id=\"<id>\")."
     elif missing:
+        named = "; ".join(
+            f"{entry['id']} ({entry['kind']}, {entry['tokens']} tokens): {entry['title']}"
+            for entry in result["left_out_cards"][:LEFT_OUT_NAMED]
+        )
+        more = len(missing) - LEFT_OUT_NAMED
         result["message"] = (
-            f"{len(missing)} matching card(s) left out ({token_count} tokens asked, {budget} allowed). "
-            "Read one with read_card(card_id=\"<id>\"), or narrow the tags or kinds."
+            f"{len(missing)} matching card(s) left out ({token_count} tokens asked, {budget} allowed): {named}"
+            + (f"; and {more} more in left_out_cards" if more > 0 else "")
+            + ". Read one with read_card(card_id=\"<id>\"), or narrow the tags or kinds."
         )
     reads = memory / "private" / "card-reads.jsonl"
     reads.parent.mkdir(parents=True, exist_ok=True)

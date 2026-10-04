@@ -2961,3 +2961,23 @@ def test_notify_crash_does_not_overwrite_a_same_second_report(
     assert (journal / first["journal_note"]).read_text(encoding="utf-8").endswith("first failure\n")
     assert (journal / second["journal_note"]).read_text(encoding="utf-8").endswith("second failure\n")
     assert first["journal_note"] != second["journal_note"]
+
+
+def test_read_place_returns_every_file_for_a_place(isolated_repo: Path) -> None:
+    places_dir = isolated_repo / names.rel("atlas") / "places"
+    places_dir.mkdir(parents=True, exist_ok=True)
+    (places_dir / "731-the-sample-workshop.md").write_text("# The full one\nBasalt worktables.\n", encoding="utf-8")
+    (places_dir / "731-sample-workshop.md").write_text("# The thin one\nSlate counters.\n", encoding="utf-8")
+    # A longer id that starts with the same digits is a different place.
+    (places_dir / "7310-elsewhere.md").write_text("# Elsewhere\nNot this place.\n", encoding="utf-8")
+
+    result = harness_mcp.read_place(place_id=731)
+    assert "Basalt worktables." in result
+    assert "Slate counters." in result
+    assert "Not this place." not in result
+    assert "2 atlas entry files for place 731" in result
+    assert f"===== {names.rel('atlas')}/places/731-sample-workshop.md =====" in result
+    assert f"===== {names.rel('atlas')}/places/731-the-sample-workshop.md =====" in result
+    # Stable order, by filename, and the same on every call.
+    assert result.index("731-sample-workshop.md =====") < result.index("731-the-sample-workshop.md =====")
+    assert harness_mcp.read_place(place_id=731) == result
