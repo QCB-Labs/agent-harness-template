@@ -49,8 +49,10 @@ def write_entries(path, entries):
 def target(entries, kind):
     if kind == 'lessons':
         return next(card for card in entries if '1. お茶' in card['text'])
-    if kind in ('journal', 'residents'):
+    if kind == 'journal':
         return entries[0]
+    if kind == 'residents':
+        return entries[-1]
     return next(card for card in entries if 'Middle' in card['text'])
 
 def inserted(kind):
@@ -115,7 +117,7 @@ def test_insert_then_edit_keeps_the_entry_id(memory, kind):
         write_entries(path, entries[:at] + [inserted(kind)] + entries[at:])
         insertion_path = path
     else:
-        # Logs/dossiers are one card per file: insert an earlier sibling file.
+        # Insert an earlier sibling file without changing existing keyed pieces.
         insertion_path = path.parent / ('W8000.md' if kind == 'journal' else 'amberbird.md')
         insertion_path.write_bytes(b'# Invented amber entry\r\n\r\nAn amber ribbon waits.\r\n')
     result = recut(source, kind, insertion_path)
@@ -225,7 +227,7 @@ def test_wake_limit_whole_cards_and_omission_counts(memory, tmp_path, tight):
           [max((card for card in current if card['kind'] == 'log'), key=c._log_number)],
         'Rules': [card for card in current if card['kind'] == 'rule' and card['status'] == 'live'],
         'What needs checking': [card for card in current if card['status'] == 'recheck'],
-        "What's here": [card for card in current if card['kind'] in ('thread','relationship') and card['status']=='live' and 'resident:20000' in card['tags']]}
+        "What's here": [card for card in current if card['kind'] in ('thread','relationship') and card['status']=='live' and card.get('role', 'current') == 'current' and 'resident:20000' in card['tags']]}
     for name, candidates in expected.items():
         body = sections[name]
         shown = 0
@@ -261,7 +263,7 @@ def test_wake_fallback_shows_the_newest_logs_plan(tmp_path):
     older = next(card for card in migrated if card['origin']['file'] == FILES['journal'])
     c.CardStore(source / 'memory', CITY, clock=lambda: '2090-01-01T00:00:00Z').append_version(older)
     doing = bodies(c.read_wake_card(source, source / 'naming.json', config_path=ROOT / 'config/cards.json'))['What I was doing']
-    assert '# Invented log W60000' in doing
+    assert 'W60000 · What I learned, and what I plan next' in doing
     assert 'Spoons come in sets.' in doing and '- Visit the amber shelf.' in doing
     for absent in ('Preamble about a kettle', 'Counted spoons', 'No reply to the kettle', 'An older note', older['text']):
         assert absent not in doing
@@ -271,6 +273,41 @@ def test_plan_section_returns_a_log_with_no_plan_heading_whole():
     assert c._plan_section(text) == text
 
 
+def _recall_store(tmp_path, cards):
+    folder = tmp_path / 'memory/cards'
+    folder.mkdir(parents=True)
+    lines = [json.dumps(dict(status='live', weight=0, title='', links=[], **card)) for card in cards]
+    (folder / 'cards.jsonl').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    return tmp_path / 'memory'
+
+def test_recall_puts_the_person_and_the_thread_before_logs(tmp_path):
+    tags = ['place:9000', 'resident:20000']
+    def card(card_id, kind, name, size, updated):
+        return dict(id=card_id, kind=kind, tags=list(tags), text=f'{card_id} ' + 'x' * size,
+                    updated_at=updated, created_at=updated, origin={'file': name, 'logical': kind, 'order': 0})
+    # The big log is the most recently touched, as after an operator re-cut.
+    memory_root = _recall_store(tmp_path, [
+        card('log-0001', 'log', 'memory/mission_log/W10000.md', 14000, '2090-01-03T00:00:00Z'),
+        card('relationship-0001', 'relationship', 'memory/residents/velvetspoon.md', 2300, '2080-01-01T00:00:00Z'),
+        card('thread-0001', 'thread', 'memory/open-threads.md', 5000, '2080-01-02T00:00:00Z'),
+        card('reflection-0001', 'reflection', 'memory/lessons.md', 600, '2080-01-01T00:00:00Z'),
+    ])
+    result = c.recall(memory_root, tags=tags, config_path=ROOT / 'config/cards.json')
+    assert [card['id'] for card in result['cards']] == ['thread-0001', 'relationship-0001', 'reflection-0001']
+    assert [entry['id'] for entry in result['left_out_cards']] == ['log-0001']
+
+def test_recall_orders_logs_by_wake_number_not_by_last_touch(tmp_path):
+    def log(card_id, name, updated):
+        return dict(id=card_id, kind='log', tags=['place:9000'], text=f'{card_id} ' + 'x' * 9000,
+                    updated_at=updated, created_at=updated, origin={'file': name, 'logical': 'journal', 'order': 0})
+    memory_root = _recall_store(tmp_path, [
+        log('log-0001', 'memory/mission_log/W9000.md', '2090-01-03T00:00:00Z'),
+        log('log-0002', 'memory/mission_log/W10000.md', '2080-01-01T00:00:00Z'),
+    ])
+    result = c.recall(memory_root, tags=['place:9000'], config_path=ROOT / 'config/cards.json')
+    assert [card['id'] for card in result['cards']] == ['log-0002']
+    assert [entry['id'] for entry in result['left_out_cards']] == ['log-0001']
+
 def test_recall_long_log_returns_short_match_and_describes_omission(memory):
     source, migrated = memory
     long_log = next(card for card in migrated if card['origin']['file'].endswith('W50000.md'))
@@ -278,9 +315,9 @@ def test_recall_long_log_returns_short_match_and_describes_omission(memory):
     result = c.recall(source / 'memory', tags=[], text='lanternquery', kinds=['log'], config_path=ROOT / 'config/cards.json')
     assert result['cards'] == [short_log] and result['matched'] == 2 and result['left_out'] == 1
     expected = {'id':long_log['id'], 'kind':'log', 'bytes':len(long_log['text'].encode()),
-                'title':'Lanternquery long log W50000', 'from':long_log['origin']['file']}
+                'title':'W50000 · header', 'role':'history'}
     assert result['left_out_cards'] == [expected]
-    assert f"(log, {expected['bytes']} bytes): {expected['title']}" in result['message']
+    assert f"(log, history, {expected['bytes']} bytes): {expected['title']}" in result['message']
     assert long_log['text'] not in result['message']
 
 

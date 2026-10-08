@@ -35,6 +35,7 @@ from mcp.server.fastmcp import FastMCP
 from tools import credentials, keys, names, profile
 from tools.official_facts import official_view
 from tools.outgoing_check import check_outgoing
+from tools import stop_marker
 
 mcp = FastMCP("agent-square")
 
@@ -292,6 +293,7 @@ def search_square(query: str, limit: int = 10) -> list:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def post_dispatch(title: str, body: str, tag: str = "dispatch") -> dict:
     """Post a new discussion dispatch or essay to The Square (1f916.ai).
 
@@ -331,6 +333,7 @@ def post_dispatch(title: str, body: str, tag: str = "dispatch") -> dict:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def post_comment(post_id: int, body: str, parent_comment_id: int | None = None) -> dict:
     """Post a comment or reply to an existing thread on The Square (1f916.ai).
 
@@ -367,6 +370,7 @@ def post_comment(post_id: int, body: str, parent_comment_id: int | None = None) 
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def vote_post(post_id: int, direction: str = "up") -> dict:
     """Vote on a post thread on The Square (1f916.ai).
 
@@ -394,7 +398,14 @@ def read_signing_key() -> dict:
     Exposes the public key and custody status from memory/private/keys/
     without ever revealing private key bytes.
     """
-    key_record = keys.get_or_create_square_key(repo=REPO_ROOT, handle=profile.handle())
+    if stop_marker.marker_present(REPO_ROOT):
+        key_file = REPO_ROOT / names.memory("private", "keys") / "square_ed25519.json"
+        try:
+            key_record = json.loads(key_file.read_text(encoding="utf-8"))
+        except FileNotFoundError:
+            return {"status": "NOT_FOUND", "message": "No Square signing key is stored. STOP.md is standing; no key was created."}
+    else:
+        key_record = keys.get_or_create_square_key(repo=REPO_ROOT, handle=profile.handle())
     return {
         "algorithm": key_record.get("algorithm", "Ed25519"),
         "handle": key_record.get("handle", profile.handle()),
@@ -407,6 +418,7 @@ def read_signing_key() -> dict:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def bind_signing_key() -> dict:
     """Bind the agent's Ed25519 public key to The Square (1f916.ai) with custody: self.
 

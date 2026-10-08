@@ -243,7 +243,7 @@ def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path)
     assert result["left_out"] == 1
     left = result["left_out_cards"][0]["id"]
     assert {left, result["cards"][0]["id"]} == {first["id"], second["id"]}
-    assert "read_card" in result["message"]
+    assert "current" in result["message"]
     logged = json.loads((tmp_path / "private" / "card-reads.jsonl").read_text(encoding="utf-8").splitlines()[-1])
     assert logged["ids"] == [result["cards"][0]["id"]]
 
@@ -307,7 +307,7 @@ def test_recall_says_what_each_left_out_card_is(tmp_path: Path) -> None:
     assert entry["id"] == untitled["id"]
     assert entry["title"] == "Made-up log, wake nine"
     assert entry["bytes"] > 100
-    assert f"{untitled['id']} (rule, {entry['bytes']} bytes): Made-up log, wake nine" in result["message"]
+    assert f"{untitled['id']} (rule, current, {entry['bytes']} bytes): Made-up log, wake nine" in result["message"]
     assert "body" not in result["message"]
 
 
@@ -320,7 +320,7 @@ def test_recall_names_five_left_out_cards_and_counts_the_rest(tmp_path: Path) ->
     result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
     assert result["left_out"] == 6 and len(result["left_out_cards"]) == 6
     assert result["message"].count("bytes):") == 5
-    assert "and 1 more in left_out_cards" in result["message"]
+    assert "and 1 more" in result["message"]
 
 
 def test_decision_card_can_still_be_read_and_recalled(tmp_path: Path) -> None:

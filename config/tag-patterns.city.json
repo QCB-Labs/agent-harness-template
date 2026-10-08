@@ -106,5 +106,26 @@
         "skip": "^- [(]none yet"
       }
     ]
+  },
+  "card_shapes": {
+    "journal": {
+      "header_label": "header",
+      "label": "{prefix} · {section}",
+      "file_date": "^\\*\\*Date:\\*\\*\\s*(\\d{4}-\\d{2}-\\d{2})"
+    },
+    "residents": {
+      "header_label": "header",
+      "label": "{prefix} · {section}",
+      "prefix": "Resident #{id} · {handle}",
+      "prefix_without_id": "Resident · {handle}",
+      "entries_heading": "^## Sourced Observations\\s*$",
+      "dated_entry": "^-\\s+(?:\\*\\*)?(\\d{4}-\\d{2}-\\d{2})(?=\\*\\*|\\s|\\[|:|$)",
+      "handle": "^(?:-\\s*\\*\\*Handle:\\*\\*\\s*|#\\s*Resident:\\s*)([^\\r\\n(]+)",
+      "resident_id": [
+        "^-\\s*\\*\\*Resident ID:\\*\\*\\s*(\\d+)\\s*$",
+        "^#\\s*Resident:[^\\r\\n]*?\\(#(\\d+)\\)",
+        "\\bresident\\s*#(\\d+)"
+      ]
+    }
   }
 }

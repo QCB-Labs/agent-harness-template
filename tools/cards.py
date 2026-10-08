@@ -9,10 +9,12 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any, Callable, Iterable, Iterator
+
+from pydantic_core import to_json
 
 SYSTEM_FIELDS = frozenset(
-    {"id", "tags", "created_at", "updated_at", "wake", "source", "channel", "weight", "origin"}
+    {"id", "tags", "created_at", "updated_at", "wake", "source", "channel", "weight", "origin", "role"}
 )
 LOGICAL_NAMES = (
     "lessons", "city_rules", "open_threads", "goals", "journal", "residents"
@@ -104,6 +106,16 @@ def extract_tags(
     return sorted(tags)
 
 
+def _jsonl_cards(path: Path) -> Iterator[tuple[int, dict[str, Any]]]:
+    """Read physical JSONL records; Unicode separators belong to card text."""
+    if not path.is_file():
+        return
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            if raw_line.strip():
+                yield line_number, json.loads(raw_line)
+
+
 class CardStore:
     """An append-only JSONL store with a disposable lookup index."""
 
@@ -132,6 +144,7 @@ class CardStore:
         channel: str,
         origin: dict[str, Any] | None = None,
         created_at: str | None = None,
+        role: str | None = None,
     ) -> dict[str, Any]:
         forbidden = sorted(SYSTEM_FIELDS.intersection(supplied))
         if forbidden:
@@ -140,7 +153,11 @@ class CardStore:
         text = supplied.get("text")
         if kind not in VALID_KINDS:
             raise CardError(f"invalid card kind: {kind!r}")
-        if not isinstance(text, str) or not text:
+        empty_source = (
+            (origin or {}).get("key") == "header"
+            and ((origin or {}).get("logical"), kind) in {("journal", "log"), ("residents", "relationship")}
+        )
+        if not isinstance(text, str) or (not text and not empty_source):
             raise CardError("text must be a non-empty string")
         links = supplied.get("links", [])
         if not isinstance(links, list):
@@ -174,6 +191,9 @@ class CardStore:
             "weight": 1.0,
             "origin": origin,
         }
+        if role is not None:
+            card["role"] = role
+        card["tags"] = sorted(set(card["tags"]) | set((origin or {}).get("file_tags", [])))
         if supplied.get("title") is not None:
             card["title"] = supplied["title"]
         line = json.dumps(card, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
@@ -184,21 +204,20 @@ class CardStore:
 
     def _current_state(self) -> dict[str, dict[str, Any]]:
         state: dict[str, dict[str, Any]] = {}
-        if not self.cards_path.is_file():
-            return state
-        for raw_line in self.cards_path.read_text(encoding="utf-8").splitlines():
-            if raw_line.strip():
-                card = json.loads(raw_line)
-                state[card["id"]] = card
+        for _, card in _jsonl_cards(self.cards_path):
+            state[card["id"]] = card
         return state
 
-    def append_version(self, card: dict[str, Any], **changes: Any) -> dict[str, Any]:
+
+    def append_version(self, card: dict[str, Any], *, role: str | None = None, **changes: Any) -> dict[str, Any]:
         """Append a complete new version of an existing card."""
         forbidden = (SYSTEM_FIELDS - {"origin"}).intersection(changes)
         if forbidden:
             raise CardError("version changes may not set system field(s): " + ", ".join(sorted(forbidden)))
         updated = dict(card)
         updated.update(changes)
+        if role is not None:
+            updated["role"] = role
         updated["updated_at"] = self.clock()
         updated["tags"] = extract_tags(
             kind=updated["kind"],
@@ -207,6 +226,7 @@ class CardStore:
             patterns=self.patterns,
             name_index=self.name_index,
         )
+        updated["tags"] = sorted(set(updated["tags"]) | set((updated.get("origin") or {}).get("file_tags", [])))
         line = json.dumps(updated, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
         with self.cards_path.open("a", encoding="utf-8", newline="") as handle:
             handle.write(line)
@@ -216,14 +236,8 @@ class CardStore:
     def rebuild_index(self) -> dict[str, Any]:
         ids: dict[str, int] = {}
         tags: dict[str, list[str]] = defaultdict(list)
-        if self.cards_path.is_file():
-            for line_number, raw_line in enumerate(
-                self.cards_path.read_text(encoding="utf-8").splitlines(), start=1
-            ):
-                if not raw_line.strip():
-                    continue
-                card = json.loads(raw_line)
-                ids[card["id"]] = line_number
+        for line_number, card in _jsonl_cards(self.cards_path):
+            ids[card["id"]] = line_number
         state = self._current_state()
         for card_id, card in state.items():
             for tag in card["tags"]:
@@ -300,7 +314,7 @@ def _resident_id(text: str) -> str | None:
     return None
 
 
-def _pieces_for(logical: str, text: str, path: Path) -> list[tuple[int, str]]:
+def _pieces_for(logical: str, text: str, path: Path, shapes: dict[str, Any] | None = None) -> list[tuple[int, str]]:
     if logical == "lessons":
         return _segments(text, re.compile(r"(?m)^## \d{4}-\d{2}-\d{2}[^\r\n]*"), logical, path)
     if logical == "city_rules":
@@ -310,7 +324,31 @@ def _pieces_for(logical: str, text: str, path: Path) -> list[tuple[int, str]]:
     if logical == "goals":
         return _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)"), logical, path)
     if not text:
+        if logical in {"journal", "residents"}:
+            return [(0, text)]
         raise MigrationFormatError(f"{logical}: empty source file: {path}")
+    if logical in {"journal", "residents"}:
+        headings = list(re.finditer(r"(?m)^## [^\r\n]*(?:\r?\n|$)", text))
+        cuts = {0, *(m.start() for m in headings)}
+        if logical == "residents":
+            cfg = (shapes or {}).get("residents", {})
+            observation = cfg.get("entries_heading")
+            entry_pattern = cfg.get("dated_entry")
+            if observation and entry_pattern:
+                for i, heading in enumerate(headings):
+                    if not re.search(observation, heading.group(), re.IGNORECASE):
+                        continue
+                    end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+                    entries = list(re.finditer(entry_pattern, text[heading.end():end], re.MULTILINE))
+                    if entries:
+                        # The observations heading stays above its first entry.
+                        # If an earlier section exists, its header is that section.
+                        if i == 0 and heading.start() > 0:
+                            cuts.discard(heading.start())
+                        cuts.update(heading.end() + m.start() for m in entries)
+        starts = sorted(cuts)
+        return [(start, text[start:starts[i + 1] if i + 1 < len(starts) else len(text)])
+                for i, start in enumerate(starts) if start < len(text)]
     return [(0, text)]
 
 
@@ -403,6 +441,91 @@ def _card_spec(
     return supplied, wake, created_at
 
 
+def _heading_text(segment: str) -> str | None:
+    match = re.match(r"## +([^\r\n]*)", segment)
+    if not match:
+        return None
+    heading = match.group(1).strip()
+    return heading[next((i for i, ch in enumerate(heading) if ch.isalnum()), len(heading)):]
+
+
+def _prepare_pieces(logical: str, path: Path, text: str, relative: str,
+                    patterns: dict[str, Any]) -> list[tuple[dict[str, Any], str, str | None, dict[str, Any], str | None]]:
+    """One preparation path for fresh migration and keyed re-cutting."""
+    shapes = patterns.get("card_shapes", {})
+    cfg = shapes.get(logical, {})
+    keyed = logical in {"journal", "residents"}
+    file_tags: set[str] = set()
+    resident_id = None
+    handle = path.stem
+    first_heading = re.search(r"(?m)^## ", text)
+    header = text[:first_heading.start()] if first_heading else text
+    if logical == "journal":
+        wake = _wake_from_path(path)
+        if re.fullmatch(r"w\d+", wake):
+            file_tags.add(f"wake:{wake}")
+        date = re.search(cfg["file_date"], header, re.MULTILINE | re.IGNORECASE) if cfg.get("file_date") else None
+        if date:
+            file_tags.add(f"date:{date.group(1)}")
+        prefix = wake.upper() if re.fullmatch(r"w\d+", wake) else wake
+    elif logical == "residents":
+        resident_id = next((m.group(1) for pattern in cfg.get("resident_id", [])
+                            if (m := re.search(pattern, header, re.MULTILINE | re.IGNORECASE))), None)
+        found = re.search(cfg["handle"], header, re.MULTILINE | re.IGNORECASE) if cfg.get("handle") else None
+        if resident_id and found:
+            handle = found.group(1).strip()
+        file_tags.add(f"name:{handle.lower()}")
+        if resident_id:
+            file_tags.add(f"resident:{resident_id}")
+        prefix = cfg.get("prefix", "").format(id=resident_id or "", handle=handle) if resident_id else cfg.get("prefix_without_id", "").format(handle=handle)
+    seen: set[str] = set()
+    entry_starts = set()
+    if logical == "residents" and cfg.get("entries_heading") and cfg.get("dated_entry"):
+        headings = list(re.finditer(r"(?m)^## [^\r\n]*(?:\r?\n|$)", text))
+        for i, heading in enumerate(headings):
+            if re.search(cfg["entries_heading"], heading.group(), re.IGNORECASE):
+                end = headings[i + 1].start() if i + 1 < len(headings) else len(text)
+                entry_starts.update(heading.end() + m.start() for m in re.finditer(cfg["dated_entry"], text[heading.end():end], re.MULTILINE))
+    counts: dict[str, int] = defaultdict(int)
+    prepared = []
+    for order, (position, segment) in enumerate(_pieces_for(logical, text, path, shapes), start=1):
+        supplied, wake, created_at = _card_spec(logical, path, text, position, segment, patterns.get("section_status"))
+        origin = {"logical": logical, "file": relative, "position": position, "order": order}
+        role = None
+        if keyed:
+            heading = _heading_text(segment)
+            if logical == "residents" and order == 1 and entry_starts and len(segment) == min(entry_starts):
+                heading = None  # The observations heading is part of the header.
+            entry = re.match(cfg["dated_entry"], segment) if position in entry_starts else None
+            if entry:
+                label = entry.group(1)
+                base_key = f"entry:{label}"
+                role = "history"
+                created_at = _first_date(label)
+            elif heading is not None:
+                label = heading
+                raw_heading = re.match(r"## +([^\r\n]*)", segment).group(1).strip()
+                base_key = re.sub(r"-+", "-", "".join(ch if ch.isalnum() else "-" for ch in raw_heading.lower()))
+                role = "history" if logical == "journal" else "current"
+            else:
+                label = cfg.get("header_label", "")
+                base_key = "header"
+                role = "history" if logical == "journal" else "current"
+            counts[base_key] += 1
+            key = base_key if counts[base_key] == 1 else f"{base_key}-{counts[base_key]}"
+            while key in seen:
+                counts[base_key] += 1
+                key = f"{base_key}-{counts[base_key]}"
+            seen.add(key)
+            origin.update(key=key, file_tags=sorted(file_tags))
+            title = cfg.get("label", "{prefix}{section}").format(prefix=prefix, section=label)
+            supplied["title"] = title[:97] + "..." if len(title) > 100 else title
+            if logical == "residents" and resident_id is None:
+                supplied["status"] = "recheck"
+        prepared.append((supplied, wake, created_at, origin, role))
+    return prepared
+
+
 def _source_files(root: Path, logical: str, relative: str, excluded: str | None) -> list[Path]:
     target = root / relative
     if target.is_file():
@@ -448,32 +571,11 @@ def migrate(
         for path in files:
             text = _read_source_text(path)
             relative_path = path.relative_to(root).as_posix()
-            pieces = _pieces_for(logical, text, path)
-            for order, (position, segment) in enumerate(pieces, start=1):
-                origin = {"logical": logical, "file": relative_path, "position": position, "order": order}
-                supplied, wake, created_at = _card_spec(logical, path, text, position, segment, store.patterns.get("section_status"))
-                resident_id = _resident_id(text) if logical == "residents" else None
-                if logical == "residents" and resident_id is None:
-                    supplied["status"] = "recheck"
-                card = store.write(
-                    supplied,
-                    wake=wake,
-                    source="self",
-                    channel="migration",
-                    origin=origin,
-                    created_at=created_at,
-                )
-                if logical == "residents":
-                    expected = f"resident:{resident_id}" if resident_id else f"name:{path.stem.lower()}"
-                    if expected not in card["tags"]:
-                        card["tags"].append(expected)
-                        card["tags"].sort()
-                        # The just-appended version is immutable; add the corrected full version.
-                        with store.cards_path.open("a", encoding="utf-8", newline="") as handle:
-                            handle.write(json.dumps(card, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n")
-                        store.rebuild_index()
-                    if resident_id is None:
-                        migration_notes.append(f"- {relative_path}: resident ID missing; tagged `name:{path.stem.lower()}` and marked `recheck`.")
+            for supplied, wake, created_at, origin, role in _prepare_pieces(logical, path, text, relative_path, store.patterns):
+                card = store.write(supplied, wake=wake, source="self", channel="migration",
+                                   origin=origin, created_at=created_at, role=role)
+                if logical == "residents" and supplied.get("status") == "recheck":
+                    migration_notes.append(f"- {relative_path}: resident ID missing; tagged `name:{path.stem.lower()}` and marked `recheck`.")
                 if logical == "lessons" and card["status"] != "structure":
                     lesson_reviews.append((card["id"], card["kind"]))
                 cards.append(card)
@@ -491,14 +593,12 @@ def migrate(
 def generate_views(cards_path: Path, destination_root: Path) -> list[Path]:
     """Rebuild source files by concatenating their original ordered card text."""
     current: dict[str, dict[str, Any]] = {}
-    for raw_line in Path(cards_path).read_text(encoding="utf-8").splitlines():
-        if raw_line.strip():
-            card = json.loads(raw_line)
-            current[card["id"]] = card
+    for _, card in _jsonl_cards(Path(cards_path)):
+        current[card["id"]] = card
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for card in current.values():
         origin = card.get("origin")
-        if origin:
+        if origin and card.get("status_reason") not in {"removed from source file", "re-cut into keyed pieces"}:
             grouped[origin["file"]].append(card)
     written: list[Path] = []
     for relative, cards in grouped.items():
@@ -541,11 +641,9 @@ def read_card(memory_root: Path, card_id: str, history: bool = False) -> dict[st
     memory_root = Path(memory_root)
     versions: list[dict[str, Any]] = []
     cards_path = memory_root / "cards" / "cards.jsonl"
-    if cards_path.is_file():
-        for line in cards_path.read_text(encoding="utf-8").splitlines():
-            card = json.loads(line)
-            if card["id"] == card_id:
-                versions.append(card)
+    for _, card in _jsonl_cards(cards_path):
+        if card["id"] == card_id:
+            versions.append(card)
     if not versions:
         return {"error": "NOT_FOUND", "id": card_id}
     result: dict[str, Any] = {"card": versions[-1]}
@@ -577,7 +675,8 @@ def _left_out_entry(card: dict[str, Any]) -> dict[str, Any]:
     if not title:
         first = next((line for line in card["text"].splitlines() if line.strip()), "")
         title = first.strip().lstrip("#-").strip().strip("*:").strip()
-    if len(title) > 80:
+    keyed = (card.get("origin") or {}).get("logical") in {"journal", "residents"} and (card.get("origin") or {}).get("key") is not None
+    if not keyed and len(title) > 80:
         title = title[:77].rstrip() + "..."
     return {
         "id": card["id"],
@@ -585,7 +684,34 @@ def _left_out_entry(card: dict[str, Any]) -> dict[str, Any]:
         "title": title,
         "bytes": _utf8_bytes(card["text"]),
         "from": (card.get("origin") or {}).get("file", ""),
+        "role": card.get("role", "current"),
     }
+
+
+def _recall_reference(card: dict[str, Any]) -> dict[str, Any]:
+    entry = _left_out_entry(card)
+    return {key: entry[key] for key in ("id", "title", "bytes")}
+
+
+def _recall_answer_size(answer: dict[str, Any]) -> int:
+    # FastMCP serializes dictionary tool results with this exact serializer.
+    return len(to_json(answer, fallback=str, indent=2))
+
+
+def _limit_recall_answer(answer: dict[str, Any], budget: int) -> None:
+    for field in ("same_file", "people", "left_out_cards"):
+        if _recall_answer_size(answer) <= budget:
+            return
+        answer.pop(field, None)
+    if _recall_answer_size(answer) > budget and answer["left_out"]:
+        answer["message"] = (f"{answer['left_out']} matching card(s) left out. "
+                             'Read one with read_card(card_id="<id>").')
+    if _recall_answer_size(answer) > budget:
+        notice = f"Returned cards and answer fields exceed the whole-answer limit of {budget} bytes."
+        answer["message"] = (answer.get("message", "") + " " + notice).strip()
+
+
+_RECALL_KIND_ORDER = {"relationship": 2, "thread": 2, "commitment": 2, "handover": 2, "log": 0}
 
 
 def recall(
@@ -597,12 +723,13 @@ def recall(
     limit: int = 10,
     config_path: Path,
     wake: str = "read",
+    record_read: bool = True,
+    history: bool = False,
 ) -> dict[str, Any]:
     memory = Path(memory_root)
     store_path = memory / "cards" / "cards.jsonl"
     state: dict[str, dict[str, Any]] = {}
-    for line in store_path.read_text(encoding="utf-8").splitlines() if store_path.is_file() else []:
-        card = json.loads(line)
+    for _, card in _jsonl_cards(store_path):
         state[card["id"]] = card
     wanted = {tag.lower() for tag in tags}
     needle = text.lower() if text else None
@@ -612,53 +739,100 @@ def recall(
         if card.get("status") in {"live", "recheck"}
         and (not wanted or wanted.intersection(card.get("tags", [])))
         and (allowed is None or card["kind"] in allowed)
-        and (needle is None or needle in (card.get("title", "") + "\n" + card["text"]).lower())
+        and (needle is None or needle in ((card.get("title") or "") + "\n" + card["text"]).lower())
     ]
+    # Among equal matches, the card about a person or a thread comes before a
+    # log: one long log would otherwise take the whole budget and leave the
+    # dossier of the person asked about unread. Logs are ordered by the number
+    # in their filename, because re-cutting an old log moves its updated_at.
     matches.sort(
         key=lambda card: (
             len(wanted.intersection(card.get("tags", []))),
             float(card.get("weight", 0)),
+            _RECALL_KIND_ORDER.get(card["kind"], 1),
+            _log_number(card) if card["kind"] == "log" else 0,
             card.get("updated_at", ""),
         ),
         reverse=True,
     )
+    current = [c for c in matches if c.get("role", "current") == "current"]
+    historical = [c for c in matches if c.get("role") == "history"]
+    historical.sort(key=lambda c: (len(wanted.intersection(c.get("tags", []))),
+                                   _log_number(c), _card_date(c), c.get("created_at", "")), reverse=True)
+    matches = current + historical
     selected = matches[:max(0, limit)]
     byte_count = sum(_utf8_bytes(card["text"]) for card in selected)
-    budget = int(_config(config_path)["recall_bytes"])
-    # Whole cards only, best match first. An over-budget answer returns what
-    # fits and names the rest; it is refused only when no card fits at all.
-    returned, _ = _fit_cards(selected, budget)
+    config = _config(config_path)
+    budget = int(config["recall_bytes"])
+    history_budget = min(budget, max(0, int(config.get("recall_history_bytes", 6000))))
+    current_budget = budget if history or not historical else budget - history_budget
+    current_candidates = [c for c in selected if c.get("role", "current") == "current"]
+    returned, _ = _fit_cards(current_candidates, current_budget)
+    remaining = budget - sum(_utf8_bytes(c["text"]) for c in returned)
+    historical_candidates = ([c for c in selected if c.get("role") == "history"] if history
+                             else historical[:max(0, limit - len(returned))])
+    history_cards, _ = _fit_cards(historical_candidates, remaining if history else min(remaining, history_budget))
+    returned += history_cards
     refused = bool(selected) and not returned
     shown = {card["id"] for card in returned}
     missing = [card for card in matches if card["id"] not in shown]
+    entries = [{k: v for k, v in _left_out_entry(card).items() if k != "from"} for card in missing]
+    kind_counts: dict[str, int] = defaultdict(int)
+    role_counts: dict[str, int] = defaultdict(int)
+    for entry in entries:
+        kind_counts[entry["kind"]] += 1
+        role_counts[entry["role"]] += 1
     result = {
-        "searched": {"tags": sorted(wanted), "text": text, "kinds": kinds, "limit": limit},
+        "searched": {"tags": sorted(wanted), "text": text, "kinds": kinds, "limit": limit, "history": history},
         "matched": len(matches),
         "left_out": len(missing),
-        "left_out_cards": [_left_out_entry(card) for card in missing],
+        "left_out_counts": {"total": len(missing), "by_kind": dict(kind_counts), "by_role": dict(role_counts)},
         "bytes": sum(_utf8_bytes(card["text"]) for card in returned),
         "budget": budget,
         "refused": refused,
         "cards": returned,
     }
-    if refused:
-        result["message"] = f"No card fits: the best match alone is over {budget} bytes. Read it with read_card(card_id=\"<id>\")."
-    elif missing:
+    listed = entries[:max(0, int(config.get("recall_left_out_listed", 12)))]
+    if listed:
+        result["left_out_cards"] = listed
+    live = [c for c in state.values() if c.get("status") in {"live", "recheck"}]
+    same_file = {}
+    for card in returned:
+        origin = card.get("origin") or {}
+        filename = origin.get("file")
+        if not filename or origin.get("logical") not in {"journal", "residents"} or filename in same_file:
+            continue
+        siblings = sorted((c for c in live if (c.get("origin") or {}).get("file") == filename and c["id"] not in shown),
+                          key=lambda c: (c.get("origin") or {}).get("order", 0))
+        if siblings:
+            same_file[filename] = {"cards": [_recall_reference(c) for c in siblings[:8]], "more": max(0, len(siblings) - 8)}
+    if same_file:
+        result["same_file"] = same_file
+    residents = {tag for tag in wanted if tag.startswith("resident:")}
+    people = [_recall_reference(c) for c in live if c["id"] not in shown
+              and c.get("role", "current") == "current"
+              and residents.intersection(c.get("tags", []))
+              and (c.get("origin") or {}).get("logical") == "residents"]
+    if people:
+        result["people"] = people
+    if missing:
         named = "; ".join(
-            f"{entry['id']} ({entry['kind']}, {entry['bytes']} bytes): {entry['title']}"
-            for entry in result["left_out_cards"][:LEFT_OUT_NAMED]
+            f"{entry['id']} ({entry['kind']}, {entry['role']}, {entry['bytes']} bytes): {entry['title']}"
+            for entry in entries[:LEFT_OUT_NAMED]
         )
         more = len(missing) - LEFT_OUT_NAMED
         result["message"] = (
-            f"{len(missing)} matching card(s) left out ({byte_count} bytes asked, {budget} allowed): {named}"
-            + (f"; and {more} more in left_out_cards" if more > 0 else "")
-            + ". Read one with read_card(card_id=\"<id>\"), or narrow the tags or kinds."
+            f"{len(missing)} matching card(s) left out ({byte_count} bytes asked, {budget} bytes allowed): {named}"
+            + (f"; and {more} more" if more > 0 else "")
+            + '. Read one with read_card(card_id="<id>").'
         )
-    reads = memory / "private" / "card-reads.jsonl"
-    reads.parent.mkdir(parents=True, exist_ok=True)
-    event = {"time": _utc_now(), "wake": wake, "query": result["searched"], "ids": [card["id"] for card in returned], "refused": refused}
-    with reads.open("a", encoding="utf-8", newline="") as handle:
-        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+    _limit_recall_answer(result, int(config.get("recall_answer_bytes", 24000)))
+    if record_read:
+        reads = memory / "private" / "card-reads.jsonl"
+        reads.parent.mkdir(parents=True, exist_ok=True)
+        event = {"time": _utc_now(), "wake": wake, "query": result["searched"], "ids": [card["id"] for card in returned], "refused": refused}
+        with reads.open("a", encoding="utf-8", newline="") as handle:
+            handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
     return result
 
 
@@ -674,20 +848,54 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
     existing = sorted(
         [
             card for card in state.values()
-            if card.get("origin", {}).get("logical") == logical and card.get("origin", {}).get("file") == relative
+            if (card.get("origin") or {}).get("logical") == logical and (card.get("origin") or {}).get("file") == relative
             # a card already removed from this file is not in it to be removed again
             and card.get("status_reason") != "removed from source file"
         ],
         key=lambda card: card["origin"]["order"],
     )
     source_text = _read_source_text(path)
-    pieces = _pieces_for(logical, source_text, path)
     result = {"changed": [], "new": [], "removed": [], "unchanged": []}
-    prepared: list[tuple[dict[str, Any], str, str | None, dict[str, Any]]] = []
-    for index, (position, segment) in enumerate(pieces):
-        supplied, wake, created_at = _card_spec(logical, path, source_text, position, segment, store.patterns.get("section_status"))
-        origin = {"logical": logical, "file": relative, "position": position, "order": index + 1}
-        prepared.append((supplied, wake, created_at, origin))
+    full_prepared = _prepare_pieces(logical, path, source_text, relative, store.patterns)
+    if logical in {"journal", "residents"}:
+        active = [c for c in existing if c.get("status_reason") != "re-cut into keyed pieces"]
+        if any((c.get("origin") or {}).get("key") is None for c in active):
+            for old in active:
+                store.append_version(old, status="done", status_reason="re-cut into keyed pieces")
+                result["removed"].append(old["id"])
+            active = []
+        keyed = {c["origin"]["key"]: c for c in active}
+        # A removed key remains known; its id resumes if the piece returns.
+        removed_keys = {
+            c["origin"]["key"]: c for c in state.values()
+            if (c.get("origin") or {}).get("logical") == logical
+            and (c.get("origin") or {}).get("file") == relative
+            and (c.get("origin") or {}).get("key") is not None
+            and c.get("status_reason") == "removed from source file"
+        }
+        removed_keys.update(keyed)
+        keyed = removed_keys
+        for supplied, wake, created_at, origin, role in full_prepared:
+            old = keyed.pop(origin["key"], None)
+            if old is None:
+                card = store.write(supplied, wake=wake, source="self", channel="migration", origin=origin, created_at=created_at, role=role)
+                result["new"].append(card["id"])
+            else:
+                changes = dict(text=supplied["text"], title=supplied.get("title"), status=supplied.get("status", "live"), origin=origin)
+                if old.get("status_reason") == "removed from source file":
+                    changes["status_reason"] = None
+                if all(old.get(k) == v for k, v in changes.items()) and old.get("role") == role:
+                    result["unchanged"].append(old["id"])
+                else:
+                    store.append_version(old, role=role, **changes)
+                    result["changed"].append(old["id"])
+        for old in keyed.values():
+            if old.get("status_reason") == "removed from source file":
+                continue
+            store.append_version(old, status="done", status_reason="removed from source file")
+            result["removed"].append(old["id"])
+        return result
+    prepared = [item[:4] for item in full_prepared]
 
     matcher = SequenceMatcher(
         a=[card["text"] for card in existing],
@@ -750,6 +958,21 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
     return result
 
 
+def recut_all(repo_root: Path, naming_path: Path, patterns_path: Path, logical: str) -> dict[str, int]:
+    """Re-cut every configured file of one logical name; append only."""
+    if logical not in LOGICAL_NAMES:
+        raise CardError(f"invalid logical name: {logical!r}")
+    naming = load_naming(naming_path)
+    files = _source_files(Path(repo_root), logical, naming["paths"][logical], naming["indexes"].get(logical))
+    counts = {"files": 0, "made": 0, "closed": 0, "changed": 0, "left_alone": 0}
+    for path in files:
+        result = recut_file(repo_root, naming_path, patterns_path, logical, path)
+        counts["files"] += 1
+        for output, key in (("made", "new"), ("closed", "removed"), ("changed", "changed"), ("left_alone", "unchanged")):
+            counts[output] += len(result[key])
+    return counts
+
+
 def _fit_cards(cards: list[dict[str, Any]], budget: int) -> tuple[list[dict[str, Any]], int]:
     chosen: list[dict[str, Any]] = []
     used = 0
@@ -798,7 +1021,7 @@ def _wake_added_section(
             body += f"\n\n{len(missing)} more thread(s) not listed: {', '.join(missing)}. Read each with read_card(card_id=\"<id>\")."
         elif missing:
             kind = {"Rules": "rule"}[name]
-            body += f'\n\n{len(missing)} more card(s) left out. Use recall(kinds=["{kind}"]) with narrower tags.'
+            body += f'\n\n{len(missing)} more card(s) left out. Use recall(tags=[], kinds=["{kind}"]) with narrower tags.'
         return body
 
     chosen: list[int] = []
@@ -811,23 +1034,29 @@ def _wake_added_section(
     return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": len(entries) - len(chosen)}
 
 
-_PLAN_HEADING = re.compile(r"(?im)^(#{1,6}) .*\bplan next\b.*$")
-
-
 def _log_number(card: dict[str, Any]) -> int:
     # "SR-0135-2080-01-01.md" is 135. A name with no letter prefix has no number.
-    match = re.match(r"[A-Za-z]+-?(\d+)", Path(card.get("origin", {}).get("file", "")).name)
+    match = re.match(r"[A-Za-z]+-?(\d+)", Path((card.get("origin") or {}).get("file", "")).name)
     return int(match.group(1)) if match else -1
 
 
-def _plan_section(text: str) -> str:
+def _card_date(card: dict[str, Any]) -> str:
+    key = (card.get("origin") or {}).get("key", "")
+    if key.startswith("entry:"):
+        return key[6:16]
+    filename = (card.get("origin") or {}).get("file", "")
+    match = re.search(r"\d{4}-\d{2}-\d{2}(?:-\d{4,6})?", filename)
+    return match.group() if match else card.get("created_at", "")
+
+
+def _plan_section(text: str, plan_heading: str | None = None) -> str:
     """A log's own plan for next time, under the log's title line.
 
     The section runs from the first heading that says "plan next" to the next
     heading of the same or a higher level. A log with no such heading is
     returned whole.
     """
-    match = _PLAN_HEADING.search(text)
+    match = re.search(plan_heading, text) if plan_heading else None
     if not match:
         return text
     following = re.compile(rf"(?m)^#{{1,{len(match.group(1))}}} ").search(text, match.end())
@@ -850,30 +1079,63 @@ def read_wake_card(
     memory = root / dirs.get("memory", "memory")
     state: dict[str, dict[str, Any]] = {}
     cards_path = memory / "cards" / "cards.jsonl"
-    for line in cards_path.read_text(encoding="utf-8").splitlines():
-        card = json.loads(line)
+    for _, card in _jsonl_cards(cards_path):
         state[card["id"]] = card
     cards = list(state.values())
     config = _config(config_path)
     cfg = config["wake_sections"]
+    plan_heading = config.get("plan_heading")
     identity = _read_source_text(root / resolved["identity"])
     governance = _read_source_text(root / resolved["governance"])
     handovers = [c for c in cards if c["kind"] == "handover" and c["status"] in {"live", "recheck"}]
     handovers.sort(key=lambda c: c["updated_at"], reverse=True)
     doing: list[dict[str, Any]] = handovers[:1]
+    log_bundle = None
+    due_card = None
     if not doing:
         # The newest log is the one with the highest number in its filename.
         # updated_at moves whenever a log is re-cut, so it can't say which is newest.
         logs = sorted(
             (c for c in cards if c["kind"] == "log" and c["status"] == "live"),
-            key=lambda c: (_log_number(c), c["updated_at"]), reverse=True,
+            key=lambda c: (_log_number(c), _card_date(c) if (c.get("origin") or {}).get("key") is not None else c["updated_at"], c["updated_at"]), reverse=True,
         )
         if logs:
-            fallback = dict(logs[0])
-            fallback["text"] = _plan_section(fallback["text"])
+            newest = logs[0]
+            if (newest.get("origin") or {}).get("key") is not None:
+                filename = newest["origin"]["file"]
+                pieces = sorted((c for c in logs if c["origin"]["file"] == filename), key=lambda c: c["origin"]["order"])
+                plan = next((c for c in pieces if plan_heading and re.search(plan_heading, c["text"])), None)
+                first_pattern = config.get("log_first_heading")
+                observation_pattern = config.get("log_observations_heading")
+                first = next((c for c in pieces if first_pattern and re.match(first_pattern, c["text"])), None)
+                if first is not None:
+                    selected = [c for c in pieces if c is first or c is plan]
+                    observations = next((c for c in pieces if observation_pattern and re.match(observation_pattern, c["text"])), None)
+                    if observations is not None and sum(_utf8_bytes(c["text"]) for c in selected + [observations]) <= int(config.get("wake_log_bytes", 5000)):
+                        selected = [c for c in pieces if c in selected or c is observations]
+                    header = next((c for c in pieces if c["origin"]["key"] == "header"), None)
+                    title = header["text"].splitlines()[0] if header and header["text"].splitlines() else ""
+                    fallback = dict(first)
+                    fallback["text"] = (title + "\n\n" if title else "") + "".join(c["text"] for c in selected)
+                    log_bundle = fallback
+                    lists = list(re.finditer(r"(?im)^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?[#*_ \t]*(Due|Waiting|Deferred|Done)\b", first["text"]))
+                    due = next((m for m in lists if m.group(1).lower() == "due"), None)
+                    if due:
+                        end = next((m.start() for m in lists if m.start() > due.start() and m.group(1).lower() != "due"), len(first["text"]))
+                        due_card = dict(first, text=first["text"][due.start():end])
+                else:
+                    fallback = dict(plan or next((c for c in pieces if c["origin"]["key"] == "header"), pieces[0]))
+                    fallback["text"] = fallback["title"] + "\n\n" + _plan_section(fallback["text"], plan_heading)
+                    if plan is None:
+                        fallback["text"] += "\n\n" + "\n".join(c["title"] for c in pieces if c["id"] != fallback["id"])
+            else:
+                fallback = dict(newest)
+                fallback["text"] = _plan_section(fallback["text"], plan_heading)
             doing.append(fallback)
     doing.extend(c for c in cards if c["kind"] == "goal" and c["status"] == "live")
     owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])
+    if due_card is not None:
+        owing.insert(0, due_card)
     threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
     rules = _file_order([c for c in cards if c["kind"] == "rule" and c["status"] == "live"])
     checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["created_at"]), reverse=True)
@@ -885,6 +1147,7 @@ def read_wake_card(
     here = [
         c for c in cards
         if c["kind"] in {"thread", "relationship"} and c["status"] == "live"
+        and c.get("role", "current") == "current"
         and wanted.intersection(c.get("tags", []))
     ]
     groups = [
@@ -909,9 +1172,14 @@ def read_wake_card(
                 section["text"] += note
                 section["bytes"] = _utf8_bytes(section["text"])
             return section
-        chosen, _ = _fit_cards(candidates, budget)
+        protected = [c for c in candidates if c is log_bundle or c is due_card]
+        if protected:
+            rest, _ = _fit_cards([c for c in candidates if c not in protected], max(0, budget - sum(_utf8_bytes(c["text"]) for c in protected)))
+            chosen = protected + rest
+        else:
+            chosen, _ = _fit_cards(candidates, budget)
         if max_cards is not None:
-            chosen = chosen[:max_cards]
+            chosen = chosen[:max(max_cards, len(protected))]
         left = len(candidates) - len(chosen)
         body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
         if left:
@@ -928,7 +1196,8 @@ def read_wake_card(
     limit = int(config["wake_card_bytes"])
     dropped = 0
     for index in range(len(groups), 0, -1):
-        while _utf8_bytes(rendered) > limit and sections[index]["shown"]:
+        protected_count = sum(c is log_bundle or c is due_card for c in groups[index - 1][1])
+        while _utf8_bytes(rendered) > limit and sections[index]["shown"] > protected_count:
             sections[index] = build_section(*groups[index - 1], max_cards=sections[index]["shown"] - 1)
             dropped += 1
             rendered = render()
@@ -938,3 +1207,20 @@ def read_wake_card(
     # doesn't cost twice its length in the agent's context.
     summary = [{key: value for key, value in section.items() if key != "text"} for section in sections]
     return {"text": rendered, "sections": summary, "total_bytes": _utf8_bytes(rendered), "dropped_cards": dropped}
+
+
+def main() -> None:
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Re-cut configured source files into memory cards.")
+    parser.add_argument("logical", choices=LOGICAL_NAMES)
+    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--naming", type=Path, default=Path("config/card-naming.json"))
+    parser.add_argument("--patterns", type=Path, default=Path("config/tag-patterns.city.json"))
+    args = parser.parse_args()
+    counts = recut_all(args.repo_root, args.repo_root / args.naming, args.repo_root / args.patterns, args.logical)
+    print(f"Files read: {counts['files']}; cards made: {counts['made']}; closed: {counts['closed']}; changed: {counts['changed']}; left alone: {counts['left_alone']}.")
+
+
+if __name__ == "__main__":
+    main()

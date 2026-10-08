@@ -5,6 +5,7 @@ import datetime
 from email.message import EmailMessage
 import functools
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -30,7 +31,7 @@ for _stream in (sys.stdout, sys.stderr):
             pass
 
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from pydantic import AliasChoices, Field
 
 # Information-release phase machine. Touching private context permanently
 # closes unknown email for that AGY conversation — see tools/phase.py.
@@ -66,6 +67,7 @@ from tools.phase import (
 from tools.correspondents import UnknownCorrespondent, resolve as resolve_correspondent
 from tools.canary_check import canary_summary
 from tools.outgoing_check import check_outgoing
+from tools import stop_marker
 
 
 def _resolve_repo() -> Path:
@@ -190,6 +192,8 @@ def _cards_patterns() -> Path:
 
 def _ensure_cards() -> None:
     """Build the card store from the source files when a fresh clone has none."""
+    if stop_marker.marker_present(REPO):
+        return
     memory = REPO / names.dir_name("memory")
     if not (memory / "cards" / "cards.jsonl").is_file():
         cards_module.migrate(REPO, REPO / "naming.json", _cards_patterns(), output_root=memory)
@@ -249,8 +253,13 @@ def recall(
     text: str | None = None,
     kinds: list[str] | None = None,
     limit: int = 10,
+    history: bool = False,
 ) -> dict[str, object]:
-    """Recall live memory cards by tags, optional text and kinds."""
+    """Recall live and recheck cards within the configured budget.
+
+    history=True uses the whole budget for history, after current cards.
+    Example: recall(tags=["wake:w137"], history=True).
+    """
     with _file_lock("cards"):
         _ensure_cards()
         return cards_module.recall(
@@ -259,13 +268,26 @@ def recall(
             text=text,
             kinds=kinds,
             limit=limit,
+            history=history,
             config_path=REPO / "config" / "cards.json",
+            record_read=not stop_marker.marker_present(REPO),
         )
 
 
+def _card_id_alias(fn):
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        if "id" in kwargs:
+            kwargs.setdefault("card_id", kwargs.pop("id"))
+        return fn(*args, **kwargs)
+    return wrapper
+
+
 @mcp.tool(name=names.tool("read_card"))
-def read_card(card_id: str, history: bool = False) -> dict[str, object]:
-    """Read one memory card, optionally with its append-only history."""
+@_card_id_alias
+def read_card(card_id: Annotated[str, Field(validation_alias=AliasChoices("card_id", "id"))],
+              history: bool = False) -> dict[str, object]:
+    """Read a card of any status, with history on request."""
     with _file_lock("cards"):
         _ensure_cards()
         return cards_module.read_card(REPO / names.dir_name("memory"), card_id, history=history)
@@ -273,7 +295,7 @@ def read_card(card_id: str, history: bool = False) -> dict[str, object]:
 
 @mcp.tool(name=names.tool("read_wake_card"))
 def read_wake_card(here_tags: list[str] = []) -> dict[str, object]:
-    """Read the eight-section bounded wake card."""
+    """Read the seven-section wake card; content is returned once."""
     with _file_lock("cards"):
         _ensure_cards()
         return cards_module.read_wake_card(
@@ -345,10 +367,49 @@ def _format_unknown_email_refusal(status: dict[str, object]) -> str:
     return "REFUSED — unknown email requires a valid host-supplied conversation ID."
 
 
+@mcp.tool(name=names.tool("raise_stop"))
+def raise_stop(reason: str = "") -> str:
+    """Raise the stop marker that refuses writes and stops wakes."""
+    try:
+        stored = _load_budget().get("wake_count", 0)
+        wake = stored + 1 if isinstance(stored, int) and not isinstance(stored, bool) else 1
+    except Exception:
+        wake = 1
+    written, marker = stop_marker.write_marker(REPO, reason, _utc_now().isoformat(), wake)
+    if not written:
+        return f"STOP.md is already standing. Raised at {stop_marker.marker_date(marker)}."
+    try:
+        mailed = _send_email(subject=f"[{profile.display_name()}] Stop marker", body=marker)
+    except Exception:
+        mailed = False
+    return (
+        "STOP.md was written at the repository root. Until the operator removes it, your local "
+        "writing tools refuse and a launch check will not start a wake. City tools are outside "
+        "this mechanism. "
+        + ("The operator was mailed." if mailed else "The mail to the operator was not sent.")
+    )
+
+
 @mcp.tool(name=names.tool("wake_status"))
 @_bind_host_conversation_id
 def wake_status(conversation_id: HostConversationId = None) -> str:
     """Report whether unknown email is available without changing wake state."""
+    try:
+        if stop_marker.marker_present(REPO):
+            marker = stop_marker.honour(
+                REPO, "wake_status conversation " + (normalize_conversation_id(conversation_id) or "not supplied"),
+                once=True,
+            )
+            return ("STOP.md is standing. This session was started while it stood.\n"
+                    f"Local writing tools refuse except {names.tool('raise_stop')} and {names.tool('write_journal')}. City tools are outside this mechanism.\n\n"
+                    + marker)
+        notice = stop_marker.read_notice(REPO)
+    except Exception:
+        return "STOP.md or its record could not be read."
+    removal = ""
+    if notice:
+        removal = ("The operator removed STOP.md.\n" + notice["marker"]
+                   + "\n\nOperator reason:\n" + notice["operator_reason"] + "\n\n")
     status = unknown_email_status(conversation_id)
     if status["available"]:
         phase_report = (
@@ -375,10 +436,11 @@ def wake_status(conversation_id: HostConversationId = None) -> str:
             "Unknown email: BLOCKED.\n"
             "Reason: conversation identity or the private-use record could not be verified."
         )
-    return f"{phase_report}\n{canary_summary(REPO)}"
+    return f"{removal}{phase_report}\n{canary_summary(REPO)}"
 
 
 @mcp.tool(name=names.tool("check_inbox"))
+@stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
 @_bind_host_conversation_id
 def check_inbox(conversation_id: HostConversationId = None) -> dict[str, object]:
     """Fetch unread mail, sanitise it, file it, and open the public reply window.
@@ -485,6 +547,7 @@ def check_inbox(conversation_id: HostConversationId = None) -> dict[str, object]
 
 
 @mcp.tool(name=names.tool("reply_to_message"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 @_bind_host_conversation_id
 @requires_phase(ORIENT, PUBLIC_REPLY, PRIVATE)
 def reply_to_message(
@@ -568,6 +631,7 @@ def reply_to_message(
 
 
 @mcp.tool(name=names.tool("send_new_thread"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 @requires_phase(PRIVATE)
 def send_new_thread(correspondent_key: str, subject: str, body: str) -> str:
     """Start a new thread with an approved correspondent, addressed by KEY.
@@ -607,6 +671,7 @@ def send_new_thread(correspondent_key: str, subject: str, body: str) -> str:
 
 
 @mcp.tool(name=names.tool("request_new_correspondent"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 @requires_phase(PRIVATE)
 def request_new_correspondent(proposed_name: str, proposed_email: str,
                               reason: str) -> dict[str, object]:
@@ -637,12 +702,45 @@ def read_correspondence(
     limit: int = 10,
     conversation_id: HostConversationId = None,
 ) -> str:
-    """Read filed correspondence. Private phase — using this permanently closes
+    """Read filed email correspondence.
+
+    Private phase — using this permanently closes
     unknown email for the current AGY conversation.
 
     ``counterpart`` is a KEY ("operator", "peer", "mailbag"), never a path.
     Omit it to list which counterparts have mail waiting.
+
+    Unread mail is collected and filed first. check_inbox is skipped whenever
+    unknown email is blocked, and it used to be the only thing that collected
+    mail, so operator and peer letters stayed on the server unseen.
     """
+    return _collect_unread_mail() + _read_filed_correspondence(counterpart, limit)
+
+
+def _collect_unread_mail() -> str:
+    """File unread mail without showing it. Returns one line for the reader, or ""."""
+    if stop_marker.marker_present(REPO):
+        return ""
+    address, password = get_agent_email()
+    if not address or not password:
+        return ""
+    try:
+        raw_messages = mail_module.fetch_unread(address, password)
+    except Exception as error:
+        # Never surface the credentials used to connect, only the failure type.
+        return f"New mail could not be collected ({type(error).__name__}). Mail already filed is below.\n\n"
+    filed = 0
+    for raw in raw_messages:
+        try:
+            message = mail_module.parse_message(raw)
+        except Exception:
+            continue
+        mail_module.file_message(message, repo=REPO)
+        filed += 1
+    return f"Collected {filed} new message(s) from the mail server.\n\n" if filed else ""
+
+
+def _read_filed_correspondence(counterpart: str | None, limit: int) -> str:
     root = REPO / names.memory("correspondence")
     if not root.exists():
         return "(no correspondence)"
@@ -719,6 +817,7 @@ def read_budget() -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("update_credit_balance"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_credit_balance(balance: float, source: str = "city.me") -> str:
     """Cache the credit balance the agent read from city.me.
 
@@ -739,6 +838,7 @@ def update_credit_balance(balance: float, source: str = "city.me") -> str:
 
 
 @mcp.tool(name=names.tool("update_quotas"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_quotas(
     notes_left: int | None = None,
     things_left: int | None = None,
@@ -810,6 +910,7 @@ def read_last_seen() -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("update_last_seen"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_last_seen(feed: str, last_id: int | str) -> str:
     """Record the newest id the agent has finished reading for one feed.
 
@@ -863,7 +964,9 @@ def write_journal(content: str) -> str:
         journal_path = month_dir / f"{base_name}-{suffix}.md"
         suffix_number += 1
 
-    journal_path.write_text(content, encoding="utf-8")
+    with stop_marker.stop_lock(REPO):
+        journal_path.write_text(content, encoding="utf-8")
+        stop_marker.clear_notice(REPO)
     recovery_path.unlink()
 
     budget["wake_count"] = wake_count
@@ -900,6 +1003,7 @@ def recover_unrecorded() -> str:
 
 
 @mcp.tool(name=names.tool("file_unrecorded"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def file_unrecorded(filename: str) -> str:
     """File a recovered crash dump as a dated journal entry.
 
@@ -936,9 +1040,24 @@ def file_unrecorded(filename: str) -> str:
     return filed.relative_to(journal_dir).as_posix()
 
 
+def _ignore_unknown_arguments(fn):
+    # FastMCP ignores extras in its argument model; mirror that for direct callers.
+    known = inspect.signature(fn).parameters
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        return fn(*args, **{name: value for name, value in kwargs.items() if name in known})
+    return wrapper
+
+
 @mcp.tool(name=names.tool("update_goals"))
-def update_goals(new_text: str) -> str:
-    """Replace goals.md after guarding against accidental blanking."""
+@stop_marker.refuse_when_stopped(lambda: REPO)
+@_ignore_unknown_arguments
+def update_goals(new_text: str | None = None) -> str:
+    """Replace the goals document after guarding against accidental blanking."""
+    if new_text is None:
+        return (f'{names.tool("update_goals")} REFUSED: nothing was changed. It takes the whole of '
+                f'{names.rel("goals")} as one string. Call {names.tool("read_goals")}(), edit the text, '
+                f'then call {names.tool("update_goals")}(new_text="<the whole file>").')
     with _file_lock("goals"):
         goals_path = REPO / names.rel("goals")
         written, refusal, backup = safe_replace_file(goals_path, new_text, 200, 0.50)
@@ -950,6 +1069,7 @@ def update_goals(new_text: str) -> str:
 
 
 @mcp.tool(name=names.tool("update_identity_evolving"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_identity_evolving(new_evolving: str) -> str:
     """Replace only IDENTITY.md's operator-delimited evolving zone."""
     if not new_evolving or not new_evolving.strip():
@@ -984,6 +1104,7 @@ def update_identity_evolving(new_evolving: str) -> str:
 
 
 @mcp.tool(name=names.tool("archive_completed_goals"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def archive_completed_goals(completed_text: str) -> str:
     """Append completed goals under a UTC timestamp heading."""
     stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
@@ -1004,6 +1125,7 @@ def _append_timestamped(path: Path, initial_text: str, text: str) -> None:
 
 
 @mcp.tool(name=names.tool("append_lesson"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def append_lesson(text: str) -> str:
     """Append a timestamped durable lesson."""
     lesson_path = REPO / names.rel("lessons")
@@ -1017,6 +1139,7 @@ def append_lesson(text: str) -> str:
 
 
 @mcp.tool(name=names.tool("append_wishlist"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def append_wishlist(text: str) -> str:
     """Append a timestamped capability request."""
     _append_timestamped(
@@ -1031,6 +1154,7 @@ def append_wishlist(text: str) -> str:
 
 
 @mcp.tool(name=names.tool("propose_city_rule"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def propose_city_rule(text: str) -> str:
     """Insert a timestamped rule proposal beneath the Proposed heading."""
     rules_path = REPO / names.rel("city_rules")
@@ -1126,6 +1250,7 @@ def _message_operator(subject: str, content: str) -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("write_operator_message"))
+@stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
 @enters_private
 def write_operator_message(
     content: str,
@@ -1281,8 +1406,11 @@ def _record_spend_authorisation(entry: dict[str, object]) -> bool:
 
 
 @mcp.tool(name=names.tool("authorise_spend"))
+@stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
 def authorise_spend(action: str, detail: str = "") -> dict[str, object]:
-    """The one gate every credit spend passes. Call it BEFORE city.credit_preflight.
+    """Check and record spending authority for a credit spend.
+
+    The one gate every credit spend passes. Call it BEFORE city.credit_preflight.
 
     ``action`` names the paid act: invent_kind, revise_kind, found_continent,
     rename_place, retire_place or restore_place. ``detail`` says exactly what:
@@ -1459,6 +1587,7 @@ def read_map(place_id: int | None = None) -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("update_map"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_map(places: list[dict[str, object]]) -> str:
     """Merge observed places into the cached map.
 
@@ -1494,12 +1623,24 @@ def update_map(places: list[dict[str, object]]) -> str:
 
 
 @mcp.tool(name=names.tool("compute_route"))
-def compute_route(current_id: int, target_id: int) -> dict[str, object]:
+def compute_route(from_place_id: int | None = None, to_place_id: int | None = None,
+                  current_id: int | None = None, target_id: int | None = None,
+                  from_id: int | None = None, to_id: int | None = None,
+                  from_place: int | None = None, to_place: int | None = None,
+                  origin_id: int | None = None, destination_id: int | None = None) -> dict[str, object]:
     """Compute a legal path between two known places in the almanac.
 
     Returns step-by-step route with directions (UP to parent vs DOWN to child),
     place names, and quota advisory. Does not move the agent.
+    Call compute_route(from_place_id=<place ID>, to_place_id=<place ID>).
     """
+    current_id = next((value for value in (from_place_id, current_id, from_id, from_place, origin_id)
+                       if value is not None), None)
+    target_id = next((value for value in (to_place_id, target_id, to_id, to_place, destination_id)
+                      if value is not None), None)
+    if current_id is None or target_id is None:
+        return {"status": "NEEDS_FROM", "message":
+                "compute_route needs both ends. Call compute_route(from_place_id=<the place you are in>, to_place_id=<the place you want>)."}
     almanac = _load_almanac()
     places = almanac.get("places", {})
     if not places:
@@ -1507,10 +1648,10 @@ def compute_route(current_id: int, target_id: int) -> dict[str, object]:
 
     if str(current_id) not in places:
         return {"status": "UNKNOWN_PLACE", "place_id": current_id,
-                "message": "current_id not in the almanac. Update with update_almanac first."}
+                "message": "from_place_id not in the almanac. Update with update_almanac first."}
     if str(target_id) not in places:
         return {"status": "UNKNOWN_PLACE", "place_id": target_id,
-                "message": "target_id not in the almanac. Update with update_almanac first."}
+                "message": "to_place_id not in the almanac. Update with update_almanac first."}
 
     current_p = places[str(current_id)]
     target_p = places[str(target_id)]
@@ -1546,12 +1687,12 @@ def compute_route(current_id: int, target_id: int) -> dict[str, object]:
     current_chain = _ancestors(current_id)
     if current_chain is None:
         return {"status": "BAD_MAP",
-                "message": "Cycle or excessive depth detected walking from current_id."}
+                "message": "Cycle or excessive depth detected walking from from_place_id."}
 
     target_chain = _ancestors(target_id)
     if target_chain is None:
         return {"status": "BAD_MAP",
-                "message": "Cycle or excessive depth detected walking from target_id."}
+                "message": "Cycle or excessive depth detected walking from to_place_id."}
 
     target_set = set(target_chain)
     lca = None
@@ -1664,6 +1805,7 @@ def read_registry(handle: str | None = None) -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("upsert_resident"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def upsert_resident(
     handle: str,
     resident_id: int | None = None,
@@ -1910,8 +2052,9 @@ def upsert_resident(
 
 
 @mcp.tool(name=names.tool("notify_crash"))
+@stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
 def notify_crash(summary: str) -> dict[str, object]:
-    """Report a failure: email the operator and save it for the journal.
+    """Report a failure: email the operator and save it for the journal. Records only.
 
     The report is saved as an unfiled journal note, the same kind a wake leaves
     when it dies mid-record. recover_unrecorded shows it at the start of the
@@ -1959,7 +2102,7 @@ def _save_almanac(data: dict[str, object]) -> None:
 
 @mcp.tool(name=names.tool("list_continents"))
 def list_continents() -> dict[str, object]:
-    """Return a compact summary of the 10 top-level continents.
+    """Return top-level continents with their visited status, counts and permissions.
 
     Direct children of [195] the world. Includes ID, name, owner,
     descendant subplace counts, and permission flags.
@@ -1967,6 +2110,8 @@ def list_continents() -> dict[str, object]:
     data = _load_almanac()
     places = data.get("places", {})
 
+    visited_ids = {int(pid) for pid, place in _load_map().get("places", {}).items()
+                   if place.get("visited")}
     continents = []
     for pid_str, p in places.items():
         if p.get("parent_id") == 195 and p.get("id") != 195:
@@ -1977,6 +2122,7 @@ def list_continents() -> dict[str, object]:
             )
             continents.append({
                 "id": cid,
+                "visited": cid in visited_ids,
                 "name": p.get("name"),
                 "owner": p.get("owner"),
                 "subplaces_count": subplaces_count,
@@ -2000,7 +2146,7 @@ def query_almanac(
     limit: int = 15,
     offset: int = 0,
 ) -> dict[str, object]:
-    """Bounded search over known places in the almanac.
+    """Search known places, including places you have not visited.
 
     Filters:
     - continent_id: restrict to places in this continent
@@ -2010,6 +2156,7 @@ def query_almanac(
     - unvisited_only: if True, returns only places not yet marked visited in memory/map.json
     - open_to: 'building', 'things', or 'notes'
     - limit / offset: pagination controls (default limit 15, max 50)
+    Example: query_almanac(parent_id=195, unvisited_only=True) lists the places directly under place 195 that you have not visited.
     """
     almanac = _load_almanac()
     places = almanac.get("places", {})
@@ -2077,6 +2224,7 @@ def query_almanac(
 
 
 @mcp.tool(name=names.tool("update_almanac"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_almanac(places: list[dict[str, object]]) -> str:
     """Merge observed places into memory/almanac.json.
 
@@ -2237,6 +2385,7 @@ def read_place(place_id: int | None = None, continent_slug: str | None = None) -
 
 
 @mcp.tool(name=names.tool("record_place"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def record_place(
     place_id: int,
     slug: str,
@@ -2339,6 +2488,7 @@ def read_resident(handle: str | None = None) -> str:
 
 
 @mcp.tool(name=names.tool("stage_draft"))
+@stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
 @enters_private
 def stage_draft(
     slug: str,
@@ -2349,7 +2499,7 @@ def stage_draft(
     attribution_sources: list[str] | None = None,
     conversation_id: HostConversationId = None,
 ) -> dict[str, object]:
-    """Stage candidate text in drafts/<slug>.md with mechanical pre-flight checks."""
+    """Stage draft text with checks before publication."""
     drafts_dir = REPO / names.dir_name("drafts")
     drafts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2492,6 +2642,7 @@ def read_drafts(
 
 
 @mcp.tool(name=names.tool("archive_draft"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 @enters_private
 def archive_draft(
     slug: str,
@@ -2499,7 +2650,7 @@ def archive_draft(
     note_id: int | None = None,
     conversation_id: HostConversationId = None,
 ) -> str:
-    """Move draft to drafts/archive/<timestamp>-<slug>.md with archival frontmatter."""
+    """Archive a staged draft with its status."""
     drafts_dir = REPO / names.dir_name("drafts")
     archive_dir = drafts_dir / "archive"
     archive_dir.mkdir(parents=True, exist_ok=True)
@@ -2543,6 +2694,7 @@ def read_open_threads() -> str:
 
 
 @mcp.tool(name=names.tool("update_open_threads"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_open_threads(new_text: str) -> str:
     """Replace the full contents of memory/open-threads.md."""
     with _file_lock("threads"):
@@ -2578,6 +2730,7 @@ def read_work(slug: str) -> str:
 
 
 @mcp.tool(name=names.tool("upsert_work"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def upsert_work(slug: str, content: str) -> str:
     """Create or update a work dossier in memory/works/items/<slug>.md."""
     clean_slug = slug.strip().lower()
@@ -2597,6 +2750,7 @@ def upsert_work(slug: str, content: str) -> str:
 
 
 @mcp.tool(name=names.tool("update_works_index"))
+@stop_marker.refuse_when_stopped(lambda: REPO)
 def update_works_index(new_text: str) -> str:
     """Replace the table of works in memory/works/index.md."""
     with _file_lock("works"):
@@ -2612,6 +2766,83 @@ def update_works_index(new_text: str) -> str:
 
 
 
+
+
+
+def _help_group(name: str) -> str:
+    if re.search(r"wake|identity|governance|operator|stop", name):
+        return "Waking"
+    if re.search(r"mail|inbox|message|correspond|new_thread", name):
+        return "Mail"
+    if re.search(r"budget|quota|credit|wallet|spend", name):
+        return "Money"
+    if re.search(r"route|map|almanac|continent|place", name):
+        return "Places and routes"
+    if re.search(r"resident|registry", name):
+        return "People"
+    if re.search(r"journal|unrecorded|last_seen|crash", name):
+        return "Recording the wake"
+    if re.search(r"draft|work", name):
+        return "Writing and drafts"
+    return "Memory"
+
+
+def _help_value(schema: dict, definitions: dict):
+    if "$ref" in schema:
+        schema = definitions[schema["$ref"].rsplit("/", 1)[-1]]
+    if "enum" in schema:
+        return schema["enum"][0]
+    if "const" in schema:
+        return schema["const"]
+    if "anyOf" in schema:
+        schema = next(part for part in schema["anyOf"] if part.get("type") != "null")
+        return _help_value(schema, definitions)
+    kind = schema.get("type")
+    if kind == "integer":
+        return 195
+    if kind == "number":
+        return 1.0
+    if kind == "boolean":
+        return False
+    if kind == "array":
+        return []
+    if kind == "object":
+        return {name: _help_value(schema["properties"][name], definitions)
+                for name in schema.get("required", [])}
+    return "<value>"
+
+
+@mcp.tool(name=names.tool("help"))
+def help(tool: str | None = None, about: str | None = None) -> str:
+    """List harness tools or return a tool's description, arguments and example."""
+    tools = mcp._tool_manager.list_tools()
+    if tool is not None:
+        found = next((item for item in tools if item.name == tool), None)
+        if found is None:
+            return f"No harness tool has that name. {names.tool('help')}() lists them all."
+        schema = found.parameters
+        properties = schema.get("properties", {})
+        required = schema.get("required", [])
+        arguments = [name + (" (required)" if name in required else " = " + repr(spec.get("default")))
+                     for name, spec in properties.items()]
+        values = {name: _help_value(properties[name], schema.get("$defs", {})) for name in required}
+        if tool == names.tool("compute_route"):
+            values = {"from_place_id": 195, "to_place_id": 196}
+        if tool == names.tool("update_goals"):
+            values = {"new_text": "<the whole file>"}
+        example = tool + "(" + ", ".join(name + "=" + repr(value) for name, value in values.items()) + ")"
+        return found.description.strip() + "\n\nArguments:\n" + "\n".join(arguments) + "\nExample: " + example
+    words = (about or "").casefold().split()
+    groups = {}
+    for item in tools:
+        sentence = item.description.strip().splitlines()[0] if item.description.strip() else ""
+        line = item.name + ": " + sentence
+        if all(word in line.casefold() for word in words):
+            # Group by the Python function's name: the exposed name changes with the naming scheme.
+            groups.setdefault(_help_group(getattr(item.fn, "__name__", item.name)), []).append(line)
+    if not groups:
+        return f"No harness tool matches those words. {names.tool('help')}() lists them all."
+    return "\n\n".join(heading + "\n" + "\n".join(entries) for heading, entries in groups.items())
 
 
 if __name__ == "__main__":

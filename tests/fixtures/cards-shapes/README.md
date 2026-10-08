@@ -23,3 +23,9 @@ is retired and excluded. Source Markdown uses CRLF.
   explicit reconstruction and line-coverage tests document this as strict xfail.
 - identity.md, governance.md: invented whole-file wake inputs.
 - naming.json: fixture paths using the live mission_log directory layout.
+
+Brief 18 adds invented heading, dated-entry, duplicate-key, date-named,
+extra-section and no-number shapes. crlf-nonascii.md has CRLF, Unicode
+and no final newline. All added content is invented.
+The local .gitattributes preserves crlf-nonascii.md bytes on every OS.
+The unchanged-card snapshot includes exact CRLF and LF checkout variants.

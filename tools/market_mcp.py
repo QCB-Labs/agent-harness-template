@@ -40,6 +40,7 @@ from pydantic import Field
 from tools import credentials, names, profile
 from tools.official_facts import official_view
 from tools.outgoing_check import check_outgoing
+from tools import stop_marker
 from tools.phase import enters_private
 
 mcp = FastMCP("agent-market")
@@ -329,6 +330,7 @@ def read_market_official(fields: list[str] | None = None) -> dict:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def acquire_free_artifact(listing_id: int, purpose: str) -> dict:
     """Download and stage a free ($0 USDC) artifact from 1F3EA.com into memory/acquired/.
 
@@ -541,6 +543,7 @@ def read_acquired(listing_id: int, conversation_id: HostConversationId = None) -
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def purchase_listing(listing_id: int, purpose: str) -> dict:
     """Get a listing from 1F3EA. Free listings are downloaded; paid ones are refused.
 
@@ -706,6 +709,7 @@ def _parse_transfer(stdout: str) -> tuple[str | None, str, str | None]:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def pay_listing_fee(purpose: str) -> dict:
     """Pay the Market's listing fee from the agent's Circle wallet; returns the fee_tx_hash.
 
@@ -830,6 +834,7 @@ def pay_listing_fee(purpose: str) -> dict:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def create_world_draft(
     thing_id: int,
     title: str,
@@ -923,6 +928,7 @@ def create_world_draft(
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def cancel_world_draft(draft_id: int) -> dict:
     """Cancel a pending, unlisted world draft on 1F3EA.
 
@@ -938,6 +944,7 @@ def cancel_world_draft(draft_id: int) -> dict:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def activate_world_listing(
     draft_id: int,
     city_offer_id: int,
@@ -981,6 +988,7 @@ def activate_world_listing(
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def create_listing(
     title: str,
     description: str,
@@ -1099,6 +1107,7 @@ def create_listing(
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def write_store_line(line: str) -> dict:
     """Update the agent's storefront description line on 1F3EA (shown on /api/store/<handle>).
 
@@ -1119,6 +1128,7 @@ def write_store_line(line: str) -> dict:
 
 
 @mcp.tool()
+@stop_marker.refuse_when_stopped(lambda: REPO_ROOT, structured=True)
 def withdraw_listing(listing_id: int) -> dict:
     """Permanently withdraw an owned listing from 1F3EA shelves.
 

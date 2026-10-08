@@ -918,6 +918,7 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
         names.tool("read_recent_journal"),
+        names.tool("raise_stop"),
         names.tool("wake_status"),
         names.tool("check_inbox"),
         names.tool("reply_to_message"),
@@ -963,6 +964,7 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("read_work"),
         names.tool("upsert_work"),
         names.tool("update_works_index"),
+        names.tool("help"),
     ]
 
     by_name = {tool.name: tool for tool in tools}
@@ -995,6 +997,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
         names.tool("read_recent_journal"),
+        names.tool("raise_stop"),
         names.tool("wake_status"),
         names.tool("check_inbox"),
         names.tool("reply_to_message"),
@@ -1040,6 +1043,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("read_work"),
         names.tool("upsert_work"),
         names.tool("update_works_index"),
+        names.tool("help"),
     ]
     tools_dir = tmp_path / "tools"
     tools_dir.mkdir()
@@ -1050,7 +1054,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py", "cards.py"):
+                   "outgoing_check.py", "cards.py", "stop_marker.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
     (tools_dir / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "agent-profile.json", tmp_path / "agent-profile.json")
@@ -1578,7 +1582,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 56
+    assert len(tools) == 58
 
 
 
