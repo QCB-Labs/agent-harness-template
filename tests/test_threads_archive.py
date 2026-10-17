@@ -1,4 +1,5 @@
 """Brief 24: archived thread entries are cards that recall returns with history."""
+from naming_support import fixture_name
 import datetime
 import json
 from pathlib import Path
@@ -46,15 +47,15 @@ def repo(tmp_path, monkeypatch):
     write(tmp_path / 'naming.json', json.dumps(naming))
     for name in ['cards.json', 'tag-patterns.city.json','tag-patterns.generic.json']:
         write(tmp_path / 'config' / name, (ROOT / 'config' / name).read_bytes())
-    write(tmp_path / 'PERSONNEL-FILE.md', '# Invented identity\n')
-    write(tmp_path / 'STANDING-ORDERS.md', '# Invented governance\n')
+    write(tmp_path / fixture_name('PERSONNEL-FILE.md'), '# Invented identity\n')
+    write(tmp_path / fixture_name('STANDING-ORDERS.md'), '# Invented governance\n')
     write(tmp_path / 'budget.json', b'{"wake_count":151}')
-    write(tmp_path / 'records/shift-reports/SR-0151.md', b'# Invented log SR-0151\n\n## What I plan next\nCount spoons.\n')
+    write(tmp_path / fixture_name('records/shift-reports/SR-0151.md'), fixture_name(b'# Invented log SR-0151\n\n## What I plan next\nCount spoons.\n'))
     return tmp_path
 
 
 def store(repo):
-    return c.CardStore(repo / 'records', repo / 'config/tag-patterns.city.json')
+    return c.CardStore(repo / fixture_name('records'), repo / 'config/tag-patterns.city.json')
 
 
 def recut(repo, logical='threads_archive'):
@@ -67,7 +68,7 @@ def archived(repo):
 
 
 def recall(repo, **kwargs):
-    return c.recall(repo / 'records', config_path=repo / 'config/cards.json', record_read=False, **kwargs)
+    return c.recall(repo / fixture_name('records'), config_path=repo / 'config/cards.json', record_read=False, **kwargs)
 
 
 def reads(repo):
@@ -78,7 +79,7 @@ def reads(repo):
 @pytest.mark.parametrize('eol', [b'\n', b'\r\n'])
 def test_each_entry_is_one_finished_card_with_exact_bytes(repo, eol):
     data = archive_bytes(eol)
-    path = repo / 'records/open-matters-archive.md'
+    path = repo / fixture_name('records/open-matters-archive.md')
     write(path, data)
     counts = recut(repo)
     assert counts['files'] == 1 and counts['closed'] == 0 and counts['changed'] == 0
@@ -94,21 +95,21 @@ def test_each_entry_is_one_finished_card_with_exact_bytes(repo, eol):
     assert not any(card['status'] in {'live', 'recheck'} for card in archived(repo))
     generated = repo / 'generated'
     c.generate_views(store(repo).cards_path, generated)
-    assert (generated / 'records/open-matters-archive.md').read_bytes() == data
+    assert (generated / fixture_name('records/open-matters-archive.md')).read_bytes() == data
 
 
 def test_recall_returns_archived_entries_only_with_history(repo):
     asked = dict(tags=['place:9001'], kinds=['thread'])
     without_archive = recall(repo, **asked)
     with_history_before = recall(repo, history=True, **asked)
-    write(repo / 'records/open-matters-archive.md', archive_bytes())
+    write(repo / fixture_name('records/open-matters-archive.md'), archive_bytes())
     recut(repo)
     assert recall(repo, **asked) == without_archive
     assert not without_archive['cards'] and not with_history_before['cards']
     found = recall(repo, history=True, **asked)['cards']
     assert len(found) == 1 and found[0]['title'] == 'Settled amber' and found[0]['status'] == 'done'
     assert found[0]['text'].encode('utf-8') == entry('Settled amber', 9001, b'\n')
-    assert c.read_card(repo / 'records', found[0]['id'])['card'] == found[0]
+    assert c.read_card(repo / fixture_name('records'), found[0]['id'])['card'] == found[0]
     # Without a kind, an ordinary recall still leaves the archive out.
     assert not [card for card in recall(repo, tags=['place:9001'])['cards']
                 if (card.get('origin') or {}).get('logical') == 'threads_archive']
@@ -118,7 +119,7 @@ def test_recall_returns_archived_entries_only_with_history(repo):
 
 
 def test_archived_entry_and_closed_thread_file_are_both_returned(repo):
-    write(repo / 'records/open-matters-archive.md', archive_bytes())
+    write(repo / fixture_name('records/open-matters-archive.md'), archive_bytes())
     recut(repo)
     h.open_thread(title='Amber again', stands='Resident #260 at Place 9001.')
     h.close_thread(title='Amber again', how_it_closed='Settled.')
@@ -129,19 +130,19 @@ def test_archived_entry_and_closed_thread_file_are_both_returned(repo):
 
 
 def test_other_reads_are_unchanged_by_the_archive(repo):
-    write(repo / 'records/open-matters.md', b'# Open Matters\n\n## Living threads\n\n- **Visit amber**\n  - Status: Pending at Place 823.\n\n')
+    write(repo / fixture_name('records/open-matters.md'), fixture_name(b'# Open Matters\n\n## Living threads\n\n- **Visit amber**\n  - Status: Pending at Place 823.\n\n'))
     recut(repo, 'open_threads')
     before_legacy = reads(repo)
-    write(repo / 'records/open-matters-archive.md', archive_bytes())
+    write(repo / fixture_name('records/open-matters-archive.md'), archive_bytes())
     recut(repo)
     assert reads(repo) == before_legacy
-    (repo / 'records/open-matters-archive.md').unlink()
+    (repo / fixture_name('records/open-matters-archive.md')).unlink()
     recut(repo)
     h.open_thread(title='Question nine', stands='Resident #260 at Place 823.')
     h.open_thread(title='Question ten', stands='Still open.')
     h.close_thread(title='Question ten', how_it_closed='Answered.')
     before = reads(repo) + (h.read_thread(title='Question nine'), h.read_thread(title='Question ten'))
-    write(repo / 'records/open-matters-archive.md', archive_bytes())
+    write(repo / fixture_name('records/open-matters-archive.md'), archive_bytes())
     recut(repo)
     assert reads(repo) + (h.read_thread(title='Question nine'), h.read_thread(title='Question ten')) == before
     assert 'Closed threads: 1.' in h.read_threads()
@@ -151,7 +152,7 @@ def test_other_reads_are_unchanged_by_the_archive(repo):
 def test_recut_twice_then_append_then_no_file(repo):
     assert recut(repo) == {'files': 0, 'made': 0, 'closed': 0, 'changed': 0, 'left_alone': 0}
     assert not store(repo).cards_path.exists() or not archived(repo)
-    path = repo / 'records/open-matters-archive.md'
+    path = repo / fixture_name('records/open-matters-archive.md')
     write(path, archive_bytes())
     first = recut(repo)
     stable = store(repo).cards_path.read_bytes()

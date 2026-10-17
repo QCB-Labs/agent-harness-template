@@ -1458,7 +1458,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Re-cut configured source files into memory cards.")
     parser.add_argument("logical", choices=LOGICAL_NAMES)
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
-    parser.add_argument("--naming", type=Path, default=Path("config/card-naming.json"))
+    parser.add_argument("--naming", type=Path, default=Path("naming.json"))
     parser.add_argument("--patterns", type=Path, default=Path("config/tag-patterns.city.json"))
     args = parser.parse_args()
     counts = recut_all(args.repo_root, args.repo_root / args.naming, args.repo_root / args.patterns, args.logical)

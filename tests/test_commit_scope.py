@@ -1,4 +1,5 @@
 """Staged scope and privacy decisions in disposable repositories only."""
+from naming_support import fixture_name
 from pathlib import Path
 import subprocess
 
@@ -37,8 +38,8 @@ def commit():
 
 
 @pytest.mark.parametrize("name", [
-    "records/a.md", "records/nested/a.md", "DIRECTIVES.md", "COMPLETED-DIRECTIVES.md",
-    "budget.json", "records/mail-archive/a.md",
+    fixture_name("records/a.md"), fixture_name("records/nested/a.md"), fixture_name("DIRECTIVES.md"), fixture_name("COMPLETED-DIRECTIVES.md"),
+    "budget.json", fixture_name("records/mail-archive/a.md"),
 ])
 def test_memory_paths(repo, capsys, name):
     stage(name)
@@ -47,19 +48,19 @@ def test_memory_paths(repo, capsys, name):
 
 
 def test_clean_count(repo, capsys):
-    stage("records/a.md")
+    stage(fixture_name("records/a.md"))
     stage("budget.json")
     assert commit_scope.main() == 0
     assert "passed on 2 files" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("name", [
-    "tools/x.py", "tests/x.py", "config/x.json", "GEMINI.md", "STANDING-ORDERS.md",
-    "PERSONNEL-FILE.md", "communications/archive/a.md", ".gitignore", "README.md", "records.md", "recordsx/a.md",
-    "DIRECTIVES.md.bak",
+    "tools/x.py", "tests/x.py", "config/x.json", "GEMINI.md", fixture_name("STANDING-ORDERS.md"),
+    fixture_name("PERSONNEL-FILE.md"), "communications/archive/a.md", ".gitignore", "README.md", fixture_name("records.md"), "recordsx/a.md",
+    fixture_name("DIRECTIVES.md.bak"),
 ])
 def test_non_memory(repo, capsys, name):
-    stage("records/a.md")
+    stage(fixture_name("records/a.md"))
     stage(name)
     assert commit_scope.main() == 2
     assert capsys.readouterr().out == f"full suite: {name}\n"
@@ -68,9 +69,9 @@ def test_non_memory(repo, capsys, name):
 def test_capitalised_memory_folder_alone(repo, capsys):
     # Alone: on a case-insensitive disk, staging records/a.md first would make
     # Records/a.md the same file, and git would file it under records/.
-    stage("Records/a.md")
+    stage(fixture_name("Records/a.md"))
     assert commit_scope.main() == 2
-    assert capsys.readouterr().out == "full suite: Records/a.md\n"
+    assert capsys.readouterr().out == fixture_name("full suite: Records/a.md\n")
 
 
 def test_empty(repo, capsys):
@@ -79,15 +80,15 @@ def test_empty(repo, capsys):
 
 
 def test_deleted(repo, capsys):
-    stage("records/a.md")
+    stage(fixture_name("records/a.md"))
     commit()
-    git("rm", "records/a.md")
+    git("rm", fixture_name("records/a.md"))
     assert commit_scope.main() == 0
     assert "passed on 1 files" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("source,target", [
-    ("tools/a.py", "records/a.md"), ("records/a.md", "tools/a.py"),
+    ("tools/a.py", fixture_name("records/a.md")), (fixture_name("records/a.md"), "tools/a.py"),
 ])
 def test_rename_checks_both_names(repo, capsys, source, target):
     stage(source)
@@ -107,10 +108,10 @@ def test_rename_checks_both_names(repo, capsys, source, target):
     "xo" + "xb-" + "1" * 20,
 ])
 def test_private_text_is_not_printed(repo, capsys, content):
-    stage("records/a.md", "clean\n" + content)
+    stage(fixture_name("records/a.md"), "clean\n" + content)
     assert commit_scope.main() == 1
     output = capsys.readouterr().out
-    assert output == "memory-only commit: privacy check failed\nrecords/a.md:2\n"
+    assert output == fixture_name("memory-only commit: privacy check failed\nrecords/a.md:2\n")
     assert content not in output
 
 
@@ -118,14 +119,14 @@ def test_private_text_is_not_printed(repo, capsys, content):
     ("zanzibarquill", "clean", 1), ("clean", "zanzibarquill", 0),
 ])
 def test_index_not_working_copy(repo, capsys, staged, working, expected):
-    stage("records/a.md", staged)
-    Path("records/a.md").write_text(working, encoding="utf-8")
+    stage(fixture_name("records/a.md"), staged)
+    Path(fixture_name("records/a.md")).write_text(working, encoding="utf-8")
     assert commit_scope.main() == expected
     assert "zanzibarquill" not in capsys.readouterr().out
 
 
 def test_missing_patterns(repo, monkeypatch, capsys):
-    stage("records/a.md")
+    stage(fixture_name("records/a.md"))
     monkeypatch.setenv("AGENT_PRIVATE_PATTERNS", str(repo / "absent"))
     assert commit_scope.main() == 1
     assert capsys.readouterr().out == "memory-only commit: privacy check failed\n"
@@ -142,10 +143,10 @@ def test_missing_patterns(repo, monkeypatch, capsys):
 ])
 def test_unreadable_blob_is_refused(repo, capsys, content):
     # Text that can't be read can't be checked, so it is refused.
-    stage("records/a.bin", content)
+    stage(fixture_name("records/a.bin"), content)
     assert commit_scope.main() == 1
     out = capsys.readouterr().out
-    assert "records/a.bin: not UTF-8 text, cannot be checked" in out
+    assert fixture_name("records/a.bin: not UTF-8 text, cannot be checked") in out
     assert "zanzibarquill" not in out
 
 
@@ -170,7 +171,7 @@ def test_unexpected_failure(repo, monkeypatch, capsys, failure):
 
 
 def test_undecodable_path(repo, monkeypatch, capsys):
-    monkeypatch.setattr(commit_scope, "_git", lambda *args: b"records/\xff\0")
+    monkeypatch.setattr(commit_scope, "_git", lambda *args: fixture_name(b"records/\xff\0"))
     assert commit_scope.main() == 2
     assert capsys.readouterr().out == "full suite: check unavailable\n"
 
@@ -181,7 +182,7 @@ def test_tracked_hook_commits_clean_memory_without_the_suite(repo, monkeypatch):
     project = Path(__file__).resolve().parents[1]
     monkeypatch.setenv("AGENT_PYTHON", sys.executable)
     monkeypatch.setenv("PYTHONPATH", str(project) + os.pathsep + os.environ.get("PYTHONPATH", ""))
-    stage("records/hook-fixture.md")
+    stage(fixture_name("records/hook-fixture.md"))
     result = git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.com",
                  "-c", "core.hooksPath=" + (project / "hooks").as_posix(),
                  "commit", "-m", "Store fixture memory")

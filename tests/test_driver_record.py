@@ -1,4 +1,5 @@
 """The model footer: counted from an invented driver record, never from the model's own word."""
+from naming_support import fixture_name
 import datetime
 import json
 import os
@@ -57,7 +58,7 @@ def driver(repo):
 
 def written(repo):
     reply = h.write_journal('# Invented log\n\n## What I Plan Next\nCount spoons.\n').splitlines()[0]
-    return (repo / 'records/shift-reports' / reply).read_text(encoding='utf-8')
+    return (repo / fixture_name('records/shift-reports') / reply).read_text(encoding='utf-8')
 
 
 def test_footer_counts_each_model_in_order_of_first_use(repo):

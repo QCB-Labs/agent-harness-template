@@ -71,6 +71,8 @@ from tools import stop_marker
 from tools import goals as goals_module
 from tools import threads as threads_module
 from tools import commit as commit_module
+from tools import verdicts
+from tools import casefiles
 
 
 def _resolve_repo() -> Path:
@@ -824,6 +826,29 @@ def _save_budget(data: dict[str, object]) -> None:
     budget_path.write_text(
         json.dumps(data, indent=2) + "\n", encoding="utf-8"
     )
+
+
+RELIABILITY_CHECK_FAILED = " Reliability check did not run; saved as written."
+
+
+def _record_flags(source: tuple[str, str], title: str, rel_file: str, text: str | None) -> None:
+    """Copy the flags in saved text into the operator's private casefile.
+    Silent to the agent; a failure is logged outside the repository."""
+    try:
+        casefiles.append_flags(source, title, rel_file, verdicts.flagged_lines(text), repo=REPO)
+    except Exception as e:  # noqa: BLE001 - never affects his write
+        casefiles.log_failure("record_flags", e, REPO)
+
+
+def _verdict_notice(phrases: list[str], what: str) -> str:
+    """One sentence for a tool's answer when a listed phrase was flagged.
+    ``what`` names the field; the wording (the operator, 14 Oct) does not use it."""
+    if not phrases:
+        return ""
+    quoted = ", ".join(f'"{phrase}"' for phrase in phrases)
+    return (f" {verdicts.FLAG} Flagged {quoted} (not checked)."
+            " An owner describing itself is a claim, not a check."
+            " If you checked it yourself, say how in the text.")
 
 
 @mcp.tool(name=names.tool("commit_wake"))
@@ -2047,6 +2072,19 @@ def upsert_resident(
             "attribution becomes an unattributed belief."
         )
 
+    # The dossier file and the registry both take the flagged text.
+    case_source = casefiles.resident(clean_handle)
+    verdict_notice = RELIABILITY_CHECK_FAILED
+    try:
+        marked_impression, verdict_phrases = verdicts.mark(
+            REPO, impression, checked=lambda line, phrases: casefiles.is_checked(
+                case_source, line, phrases, f"{names.rel('residents')}/{clean_handle}.md", REPO))
+    except Exception:
+        pass
+    else:
+        verdict_notice = _verdict_notice(verdict_phrases, "impression")
+        impression = marked_impression
+
     with _file_lock("residents"):
         residents_dir = REPO / names.rel("residents")
         dossier_path = (residents_dir / f"{clean_handle}.md").resolve()
@@ -2177,6 +2215,9 @@ def upsert_resident(
 {final_imp}
 """
         dossier_path.write_text(new_content, encoding="utf-8")
+        if impression is not None:
+            _record_flags(case_source, clean_handle,
+                          f"{names.rel('residents')}/{clean_handle}.md", final_imp)
 
         index_path = residents_dir / "index.md"
         rows: list[str] = []
@@ -2242,7 +2283,7 @@ def upsert_resident(
         _recut_after_write("residents", dossier_path)
         _recut_after_write("residents", index_path)
 
-    return f"Resident '{clean_handle}' updated: {', '.join(changes)}."
+    return f"Resident '{clean_handle}' updated: {', '.join(changes)}." + verdict_notice
 
 
 @mcp.tool(name=names.tool("notify_crash"))
@@ -2605,6 +2646,17 @@ def record_place(
 
     things_str = "\n".join(f"- {t}" for t in active_things) if active_things else "- (none observed)"
     laws_str = quirks_and_laws.strip() if quirks_and_laws else "(none observed)"
+    case_source = casefiles.place(place_id)
+    verdict_notice = RELIABILITY_CHECK_FAILED
+    try:
+        marked_impression, verdict_phrases = verdicts.mark(
+            REPO, impression, checked=lambda line, phrases: casefiles.is_checked(
+                case_source, line, phrases, f"{names.rel('atlas')}/places/{filename}", REPO))
+    except Exception:
+        pass
+    else:
+        verdict_notice = _verdict_notice(verdict_phrases, "impression")
+        impression = marked_impression
     imp_str = impression.strip() if impression else "(no impression recorded)"
     today = _utc_now().strftime("%Y-%m-%d")
 
@@ -2634,6 +2686,9 @@ def record_place(
         earlier = before.count(PLACE_RECORD_BREAK) + 1
         content = before.rstrip("\r\n") + "\n" + PLACE_RECORD_BREAK + content
     target_file.write_text(content, encoding="utf-8")
+    if impression:
+        _record_flags(case_source, clean_slug or f"place {place_id}",
+                      f"{names.rel('atlas')}/places/{filename}", impression)
 
     # Pull parent_id and official name from almanac.json before writing to map.json
     almanac = _load_almanac()
@@ -2653,7 +2708,7 @@ def record_place(
     update_map([map_entry])
 
     beneath = f", beneath {earlier} earlier record(s)" if earlier else ""
-    return f"Atlas entry recorded in {names.rel('atlas')}/places/{filename}{beneath} and place {place_id} marked visited in map.json."
+    return f"Atlas entry recorded in {names.rel('atlas')}/places/{filename}{beneath} and place {place_id} marked visited in map.json." + verdict_notice
 
 
 @mcp.tool(name=names.tool("read_resident"))
@@ -2800,6 +2855,15 @@ def stage_draft(
         kinds_yaml = "\n".join(f'  - "{k}"' for k in finding_kinds)
         outgoing_check_yaml = f"outgoing_check:\n{kinds_yaml}\n"
 
+    reliability_check = {}
+    try:
+        draft_verdicts = verdicts.find(body, *verdicts.load_words(REPO))
+    except Exception:
+        draft_verdicts = []
+        reliability_check = {"reliability_check": "did not run"}
+    # The readers split on ---; JSON escapes keep phrases out of that delimiter.
+    reliability_yaml = json.dumps(draft_verdicts).replace("-", r"\u002d")
+
     blocked_yaml = ("cleared_to_post: false\nblocked_kinds:\n"
                     + "\n".join(f'  - "{k}"' for k in refused_kinds) + "\n") if refused_kinds else ""
     now_iso = _utc_now().isoformat()
@@ -2811,6 +2875,7 @@ target_place_id: {target_place_id}
 utf8_bytes: {utf8_bytes}
 characters: {char_count}
 lines: {line_count}
+reliability_verdicts: {reliability_yaml}
 city_limit_bytes: {CITY_BYTE_LIMIT}
 within_limits: {str(utf8_bytes <= CITY_BYTE_LIMIT).lower()}
 within_recommended_window: {str(utf8_bytes <= RECOMMENDED_NOTE_LIMIT).lower()}
@@ -2839,6 +2904,7 @@ attribution_sources:
 
     return {
         "status": "STAGED",
+        **reliability_check,
         "file": f"{names.dir_name('drafts')}/{clean_slug}.md",
         "metrics": {
             "utf8_bytes": utf8_bytes,
@@ -2847,6 +2913,8 @@ attribution_sources:
             "within_city_limit": utf8_bytes <= CITY_BYTE_LIMIT,
             "within_recommended_window": utf8_bytes <= RECOMMENDED_NOTE_LIMIT,
             "outgoing_check": outgoing_check_metric,
+            # Reliability verdicts remain advisory: they never stop a draft.
+            "reliability_verdicts": draft_verdicts,
         },
         "target_place": {
             "id": target_place_id,

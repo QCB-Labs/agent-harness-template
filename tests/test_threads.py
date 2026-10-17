@@ -1,4 +1,5 @@
 """Brief 23: invented fixtures, literal bytes, and small thread tools."""
+from naming_support import fixture_name
 import ast
 import asyncio
 import datetime
@@ -34,11 +35,11 @@ def repo(tmp_path, monkeypatch):
     write(tmp_path / 'naming.json', json.dumps(naming))
     for name in ['cards.json','tag-patterns.city.json','tag-patterns.generic.json']:
         write(tmp_path / 'config' / name, (ROOT / 'config' / name).read_bytes())
-    write(tmp_path / 'PERSONNEL-FILE.md', '# Invented identity\n')
-    write(tmp_path / 'STANDING-ORDERS.md', '# Invented governance\n')
+    write(tmp_path / fixture_name('PERSONNEL-FILE.md'), '# Invented identity\n')
+    write(tmp_path / fixture_name('STANDING-ORDERS.md'), '# Invented governance\n')
     write(tmp_path / 'budget.json', b'{"wake_count":151}')
-    write(tmp_path / 'records/open-matters.md', legacy())
-    write(tmp_path / 'records/shift-reports/SR-0151.md', b'# Invented log SR-0151\n\n## What I plan next\nCount spoons.\n')
+    write(tmp_path / fixture_name('records/open-matters.md'), legacy())
+    write(tmp_path / fixture_name('records/shift-reports/SR-0151.md'), fixture_name(b'# Invented log SR-0151\n\n## What I plan next\nCount spoons.\n'))
     return tmp_path
 
 
@@ -48,11 +49,11 @@ def legacy(eol=b'\n', duplicate=False, collision=False):
         titles[1] = titles[0]
     if collision:
         titles[1] = 'Visit-amber'
-    lines = ['# Open Matters', '', '## Living threads', '']
+    lines = [fixture_name('# Open Matters'), '', '## Living threads', '']
     for i, title in enumerate(titles):
         lines.append('- **' + title + '**')
         if i != 2:
-            lines += ['  - **Initiated:** SR-0140','  - **Context:** resident #260 at Place 823, café 日本.',
+            lines += [fixture_name('  - **Initiated:** SR-0140'),'  - **Context:** resident #260 at Place 823, café 日本.',
                       '  - **Progression:** An invented conversation.','  - **Status:** Pending.']
         lines.append('')
     lines += ['## Resolved threads','','- **Settled first**','  - **Status:** Done.','','- **Settled second**','']
@@ -64,7 +65,7 @@ def snapshot(repo):
 
 
 def store(repo):
-    return c.CardStore(repo / 'records', repo / 'config/tag-patterns.city.json')
+    return c.CardStore(repo / fixture_name('records'), repo / 'config/tag-patterns.city.json')
 
 
 def recut(repo, logical):
@@ -78,30 +79,30 @@ def wake(repo):
 def test_shape_updates_verbatim_stands_and_multiline(repo):
     stands = 'Café 日本\r\nresident #260 at Place 823\r\n'
     assert h.open_thread(title='Amber', stands=stands) == 'Thread "Amber" opened.'
-    path = repo / 'records/threads/amber.md'
+    path = repo / fixture_name('records/threads/amber.md')
     assert path.read_bytes() == t.settings(repo)['file'].format(title='Amber', stands=stands).encode()
     first = path.read_bytes()
     update = 'First café\r\nNext line\nThird 日本'
     assert h.update_thread(title='Amber', update=update) == 'Thread "Amber" updated.'
-    expected = first + '- **2026-10-11 (SR-0152):** First café\r\n  Next line\n  Third 日本\n'.encode()
+    expected = first + fixture_name('- **2026-10-11 (SR-0152):** First café\r\n  Next line\n  Third 日本\n').encode()
     assert path.read_bytes() == expected
     h.update_thread(title='Amber', update='Second.', stands='Now settled.\r\nNothing owed.')
     body = path.read_bytes()
     assert stands.encode() not in body and b'Now settled.\r\nNothing owed.' in body
     assert expected.split(b'## Updates\n', 1)[1] in body
-    assert body.endswith(b'- **2026-10-11 (SR-0152):** Second.\n')
+    assert body.endswith(fixture_name(b'- **2026-10-11 (SR-0152):** Second.\n'))
     cards = sorted((card for card in store(repo)._current_state().values()
-                    if card['origin']['file'] == 'records/threads/amber.md'), key=lambda card: card['origin']['order'])
+                    if card['origin']['file'] == fixture_name('records/threads/amber.md')), key=lambda card: card['origin']['order'])
     assert [card['origin']['key'] for card in cards] == ['header','entry:2026-10-11-152','entry:2026-10-11-152-2']
     assert [card['role'] for card in cards] == ['current','history','history']
-    assert [card['title'] for card in cards] == ['Thread · Amber · where it stands','Thread · Amber · 2026-10-11 (SR-0152)','Thread · Amber · 2026-10-11 (SR-0152)']
+    assert [card['title'] for card in cards] == ['Thread · Amber · where it stands',fixture_name('Thread · Amber · 2026-10-11 (SR-0152)'),fixture_name('Thread · Amber · 2026-10-11 (SR-0152)')]
     assert all('thread:amber' in card['tags'] for card in cards)
     assert ''.join(card['text'] for card in cards).encode() == body
 
 
 def test_writers_never_limit_size_or_cut_title(repo):
     title = 'Large ' + 'x' * 220
-    stands = '- **2099-01-01 (SR-0999):** Quoted example, not an update.\n' + '日本' * 20000
+    stands = fixture_name('- **2099-01-01 (SR-0999):** Quoted example, not an update.\n') + '日本' * 20000
     h.open_thread(title=title, stands=stands)
     assert 'no updates' in h.read_threads()
     h.update_thread(title=title, update='é' * 20000)
@@ -124,7 +125,7 @@ def test_writers_never_limit_size_or_cut_title(repo):
  ('close_thread', dict(title='Amber', how_it_closed='two\nlines'), 'closure'),
  ('read_thread', dict(title='Missing'), 'any_missing'),
  ('read_thread', dict(title='Amber', closed_in='152'), 'closed_in'),
- ('read_thread', dict(title='Amber', closed_in='SR-0999'), 'closing_missing'),
+ ('read_thread', dict(title='Amber', closed_in=fixture_name('SR-0999')), 'closing_missing'),
 ])
 def test_refusals_change_nothing(repo, name, kwargs, fact):
     h.open_thread(title='Amber', stands='Original.')
@@ -142,7 +143,7 @@ def test_refusals_change_nothing(repo, name, kwargs, fact):
 
 def test_malformed_files_and_stop_check_refuse_without_changes(repo, monkeypatch):
     h.open_thread(title='Amber', stands='Original.')
-    path = repo / 'records/threads/amber.md'
+    path = repo / fixture_name('records/threads/amber.md')
     write(path, path.read_bytes().replace(b'- **Status:** open', b'- **Status:** unknown'))
     before = snapshot(repo)
     assert 'required sections' in h.update_thread(title='Amber', update='new')
@@ -163,25 +164,25 @@ def test_close_reopen_suffixes_cards_recall_and_read_card(repo):
     for n in range(3):
         h.open_thread(title='Amber', stands=f'Opening {n}')
         h.update_thread(title='Amber', update='An update.')
-        path = repo / 'records/threads/amber.md'
+        path = repo / fixture_name('records/threads/amber.md')
         before = path.read_bytes()
         assert h.close_thread(title='Amber', how_it_closed='Settled.') == 'Thread "Amber" closed.'
-        closed = repo / 'records/threads/closed' / ('amber-SR-0152.md' if n == 0 else f'amber-SR-0152-{n+1}.md')
-        assert closed.read_bytes() == before.replace(b'- **Status:** open', b'- **Status:** closed in SR-0152, 2026-10-11: Settled.', 1)
-        assert h.read_thread(title='Amber', closed_in='SR-0152' if n == 0 else f'SR-0152-{n+1}').encode() == closed.read_bytes()
+        closed = repo / fixture_name('records/threads/closed') / (fixture_name('amber-SR-0152.md') if n == 0 else fixture_name(f'amber-SR-0152-{n+1}.md'))
+        assert closed.read_bytes() == before.replace(b'- **Status:** open', fixture_name(b'- **Status:** closed in SR-0152, 2026-10-11: Settled.'), 1)
+        assert h.read_thread(title='Amber', closed_in=fixture_name('SR-0152') if n == 0 else fixture_name(f'SR-0152-{n+1}')).encode() == closed.read_bytes()
         current = [card for card in store(repo)._current_state().values() if card['origin']['logical'] == 'threads']
         assert len(current) == 2 * (n + 1) and all(card['status'] == 'done' for card in current)
         if n == 0:
             original_ids = {card['id']: card for card in current}
         else:
             assert all(store(repo)._current_state()[key] == value for key, value in original_ids.items())
-    assert h.read_thread(title='Amber').endswith('Earlier closings: SR-0152-2, SR-0152.')
+    assert h.read_thread(title='Amber').endswith(fixture_name('Earlier closings: SR-0152-2, SR-0152.'))
     args = dict(tags=['thread:amber'], kinds=['thread'], config_path=repo / 'config/cards.json', record_read=False)
-    assert not c.recall(repo / 'records', **args)['cards']
-    historical = c.recall(repo / 'records', history=True, **args)['cards']
+    assert not c.recall(repo / fixture_name('records'), **args)['cards']
+    historical = c.recall(repo / fixture_name('records'), history=True, **args)['cards']
     assert len(historical) == 6
     for card in historical:
-        assert c.read_card(repo / 'records', card['id'])['card'] == card
+        assert c.read_card(repo / fixture_name('records'), card['id'])['card'] == card
     assert 'Amber' not in wake(repo)['text']
     h.open_thread(title='Amber', stands='Fourth opening')
     assert h.read_thread(title='Amber').startswith('# Amber') and 'Fourth opening' in h.read_thread(title='Amber')
@@ -197,24 +198,24 @@ def test_close_reopen_suffixes_cards_recall_and_read_card(repo):
 def test_read_older_wake_and_slug_collision_with_closed_lookup(repo):
     h.open_thread(title='A B', stands='First')
     h.close_thread(title='A B', how_it_closed='Settled')
-    first = (repo / 'records/threads/closed/a-b-SR-0152.md').read_bytes()
+    first = (repo / fixture_name('records/threads/closed/a-b-SR-0152.md')).read_bytes()
     h.open_thread(title='A-B', stands='Different title, same slug')
     assert h.read_thread(title='A B').encode() == first
     h.close_thread(title='A-B', how_it_closed='Settled')
     write(repo / 'budget.json', b'{"wake_count":152}')
     h.open_thread(title='A B', stands='Again')
     h.close_thread(title='A B', how_it_closed='Settled')
-    assert h.read_thread(title='A B', closed_in='SR-0152').encode() == first
-    assert h.read_thread(title='A B').endswith('Earlier closings: SR-0152.')
+    assert h.read_thread(title='A B', closed_in=fixture_name('SR-0152')).encode() == first
+    assert h.read_thread(title='A B').endswith(fixture_name('Earlier closings: SR-0152.'))
 
 
 def test_old_tools_exact_before_and_after_first_file(repo):
     before = h.read_open_threads()
-    assert before == (repo / 'records/open-matters.md').read_text(encoding='utf-8')
+    assert before == (repo / fixture_name('records/open-matters.md')).read_text(encoding='utf-8')
     t.folder(repo).mkdir()
     assert h.read_open_threads() == before
     new = before + '\n- **An invented additional thread**\n'
-    assert h.update_open_threads(new_text=new) == f'records/open-matters.md updated ({len(new)} chars).'
+    assert h.update_open_threads(new_text=new) == fixture_name(f'records/open-matters.md updated ({len(new)} chars).')
     h.open_thread(title='Amber', stands='Invented standing text')
     assert h.read_open_threads() == h.read_threads()
     stable = snapshot(repo)
@@ -268,20 +269,20 @@ def test_settings_and_missing_folder_recut(repo):
 def test_goal_self_tag_and_plan_links_only_whole_names(repo):
     h.set_goal(name='Learn café', how='Read')
     h.open_project(title='Amber model', target='A model', next_step='Draw', serves='Learn café')
-    path = repo / 'records/shift-reports/SR-0999.md'
-    write(path, '# Log SR-0999\n\n## Other\nLearn café, Amber model.\n\n## What I plan next\nLEARN CAFÉ; Amber model. NotLearn caféish.\n')
+    path = repo / fixture_name('records/shift-reports/SR-0999.md')
+    write(path, fixture_name('# Log SR-0999\n\n## Other\nLearn café, Amber model.\n\n## What I plan next\nLEARN CAFÉ; Amber model. NotLearn caféish.\n'))
     recut(repo, 'journal')
     state = store(repo)._current_state()
     goal = next(card for card in state.values() if card['origin']['logical'] == 'goal_files')
     assert 'goal:learn-cafe' in goal['tags']
-    log = [card for card in state.values() if card['origin']['file'].endswith('SR-0999.md')]
+    log = [card for card in state.values() if card['origin']['file'].endswith(fixture_name('SR-0999.md'))]
     plan = next(card for card in log if 'plan next' in card['text'])
     assert {'goal:learn-cafe','goal:amber-model'} <= set(plan['tags'])
     assert all(not any(tag.startswith('goal:') for tag in card['tags']) for card in log if card != plan)
     before = plan.copy()
     h.drop_goal(name='Learn café', reason='Changed')
     assert store(repo)._current_state()[plan['id']] == before
-    answer = c.recall(repo / 'records', tags=['goal:learn-cafe'], history=True, config_path=repo / 'config/cards.json', record_read=False)
+    answer = c.recall(repo / fixture_name('records'), tags=['goal:learn-cafe'], history=True, config_path=repo / 'config/cards.json', record_read=False)
     assert any(card['kind'] == 'project' for card in answer['cards'])
     assert any(card['id'] == plan['id'] for card in answer['cards'])
 
@@ -489,7 +490,7 @@ def test_multiple_title_hints_sorted_and_capped(repo, count, tool, kwargs):
     assert snapshot(repo) == stable
 
 
-@pytest.mark.parametrize('selector', ['', 'SR-0152'])
+@pytest.mark.parametrize('selector', ['', fixture_name('SR-0152')])
 def test_closed_title_hint_and_open_priority(repo, selector):
     title = 'Settled café question'
     h.open_thread(title=title, stands='Invented.')
@@ -531,16 +532,16 @@ def test_each_same_wake_closing_has_its_own_selector(repo, count):
     for i in range(count):
         h.open_thread(title='Amber', stands=f'Opening {i+1}.')
         h.close_thread(title='Amber', how_it_closed=f'Closing {i+1}.')
-        selector = 'SR-0152' + (f'-{i+1}' if i else '')
+        selector = fixture_name('SR-0152') + (f'-{i+1}' if i else '')
         copies.append((selector, (t.folder(repo) / 'closed' / f'amber-{selector}.md').read_bytes()))
     for selector, body in copies:
         assert h.read_thread(title='Amber', closed_in=selector).encode() == body
     earlier = ', '.join(selector for selector, _ in reversed(copies[:-1]))
     assert h.read_thread(title='Amber').encode() == copies[-1][1] + ('\n\nEarlier closings: ' + earlier + '.').encode()
-    for selector in ['152', 'SR-0152-1', 'SR-0152-0', 'SR-0152-two']:
+    for selector in ['152', fixture_name('SR-0152-1'), fixture_name('SR-0152-0'), fixture_name('SR-0152-two')]:
         stable = snapshot(repo)
         answer = h.read_thread(title='Amber', closed_in=selector)
-        assert 'such as SR-0152 or SR-0152-2' in answer
+        assert fixture_name('such as SR-0152 or SR-0152-2') in answer
         assert answer.endswith('; call read_thread(title="<title>", closed_in="").')
         assert snapshot(repo) == stable
 
@@ -551,7 +552,7 @@ def test_help_describes_pages_and_individual_closings(repo):
     assert t.settings(repo)['read_threads_description'] in index_help
     assert 'start = 1' in index_help and 'Example: read_threads(start=1)' in index_help
     assert t.settings(repo)['read_thread_description'] in thread_help
-    assert "closed_in='SR-0152-2'" in thread_help
+    assert fixture_name("closed_in='SR-0152-2'") in thread_help
     for answer in [index_help, thread_help]:
         call = ast.parse(answer.split('Example: ')[1], mode='eval').body
         kwargs = {kw.arg: ast.literal_eval(kw.value) for kw in call.keywords}

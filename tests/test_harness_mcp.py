@@ -1087,7 +1087,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py", "threads.py", "driver_record.py", "commit.py"):
+                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py", "threads.py", "driver_record.py", "commit.py", "verdicts.py", "casefiles.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
     # Reader descriptions come from settings, so this standalone server fixture
     # includes the same settings bytes as its copied tool modules.

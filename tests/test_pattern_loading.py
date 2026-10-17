@@ -5,6 +5,7 @@ never read here.
 """
 
 from __future__ import annotations
+from naming_support import fixture_name
 
 import subprocess
 from pathlib import Path
@@ -102,9 +103,9 @@ def test_commit_scope_reads_the_file_once(patterns, tmp_path, monkeypatch, capsy
     repo.mkdir()
     monkeypatch.chdir(repo)
     subprocess.run(["git", "init", "-q"], check=True)
-    Path("records").mkdir()
-    Path("records/a.md").write_text("line\n" * 200, encoding="utf-8")
-    subprocess.run(["git", "add", "--", "records/a.md"], check=True)
+    Path(fixture_name("records")).mkdir()
+    Path(fixture_name("records/a.md")).write_text("line\n" * 200, encoding="utf-8")
+    subprocess.run(["git", "add", "--", fixture_name("records/a.md")], check=True)
     calls = _counting_reads(monkeypatch)
     assert commit_scope.main() == 0
     assert calls["n"] == 1
@@ -116,7 +117,7 @@ def test_commit_scope_missing_file_still_refuses(tmp_path, monkeypatch, capsys):
     repo.mkdir()
     monkeypatch.chdir(repo)
     subprocess.run(["git", "init", "-q"], check=True)
-    Path("records").mkdir()
-    Path("records/a.md").write_text("clean\n", encoding="utf-8")
-    subprocess.run(["git", "add", "--", "records/a.md"], check=True)
+    Path(fixture_name("records")).mkdir()
+    Path(fixture_name("records/a.md")).write_text("clean\n", encoding="utf-8")
+    subprocess.run(["git", "add", "--", fixture_name("records/a.md")], check=True)
     assert commit_scope.main() == 1

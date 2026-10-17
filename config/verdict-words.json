@@ -1,0 +1,16 @@
+{
+  "about": "Phrases that mark a verdict on someone else's reliability. Read by tools/verdicts.py. A mark never refuses a write. Edit freely: 'claims' mark, 'ignore' are removed before matching.",
+  "claims": [
+    "only facts", "facts only", "just the facts", "nothing but the facts",
+    "does not change the facts", "no opinion", "no opinions",
+    "does not add opinion", "does not add opinions", "without opinion",
+    "no editorial", "without editorial", "no spin", "without spin",
+    "no bias", "without bias", "unbiased", "impartial", "neutral",
+    "objective", "factual", "accurate", "truthful", "trustworthy",
+    "reliable", "credible", "verified", "authoritative"
+  ],
+  "ignore": [
+    "neutral ground", "neutral zone", "neutral tone", "neutral tones",
+    "neutral colour", "neutral colours", "neutral color", "neutral colors"
+  ]
+}

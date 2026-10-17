@@ -1,4 +1,5 @@
 """Brief 21: invented small files, exact bytes and bounded readers."""
+from naming_support import fixture_name
 import ast
 import asyncio
 import datetime
@@ -25,14 +26,14 @@ def write(path, data):
 def repo(tmp_path, monkeypatch):
     monkeypatch.setattr(h, 'REPO', tmp_path)
     monkeypatch.setattr(h, '_utc_now', lambda: NOW)
-    write(tmp_path / 'DIRECTIVES.md', '# Goals\n\n## Ambition\n\nKeep learning.\n')
-    write(tmp_path / 'PERSONNEL-FILE.md', '# Fixture identity\n')
-    write(tmp_path / 'STANDING-ORDERS.md', '# Fixture governance\n')
+    write(tmp_path / fixture_name('DIRECTIVES.md'), '# Goals\n\n## Ambition\n\nKeep learning.\n')
+    write(tmp_path / fixture_name('PERSONNEL-FILE.md'), '# Fixture identity\n')
+    write(tmp_path / fixture_name('STANDING-ORDERS.md'), '# Fixture governance\n')
     write(tmp_path / 'budget.json', b'{"wake_count":41}')
     naming = {
-        'dirs': {'memory': 'records'},
-        'paths': {'identity': 'PERSONNEL-FILE.md', 'governance': 'STANDING-ORDERS.md', 'goals': 'DIRECTIVES.md',
-                  'goal_files': 'records/goals/', 'projects': 'records/projects/'},
+        'dirs': {'memory': fixture_name('records')},
+        'paths': {'identity': fixture_name('PERSONNEL-FILE.md'), 'governance': fixture_name('STANDING-ORDERS.md'), 'goals': fixture_name('DIRECTIVES.md'),
+                  'goal_files': fixture_name('records/goals/'), 'projects': fixture_name('records/projects/')},
         'indexes': {},
     }
     write(tmp_path / 'naming.json', json.dumps(naming))
@@ -47,7 +48,7 @@ def snapshot(repo):
 
 
 def store(repo):
-    return c.CardStore(repo / 'records', repo / 'config/tag-patterns.city.json')
+    return c.CardStore(repo / fixture_name('records'), repo / 'config/tag-patterns.city.json')
 
 
 def recut(repo, logical):
@@ -62,7 +63,7 @@ def open_fixture(title='Model', **kwargs):
 def test_goal_shape_replace_drop_archive_bytes(repo):
     how = 'Écrire café.\r\n第二行 🚀\r\n'
     assert h.set_goal(name='Learn', how=how) == 'Goal "Learn" stored.'
-    path = repo / 'records/goals/learn.md'
+    path = repo / fixture_name('records/goals/learn.md')
     assert path.read_bytes() == b'# Learn\n\n' + how.encode('utf-8')
     assert h.read_goal(name='Learn').encode() == path.read_bytes()
     how2 = 'Réviser\r\nexactly'
@@ -72,7 +73,7 @@ def test_goal_shape_replace_drop_archive_bytes(repo):
     reason = 'Changed direction.\r\n理由'
     assert h.drop_goal(name='Learn', reason=reason) == 'Goal "Learn" archived and removed.'
     assert not path.exists()
-    assert (repo / 'COMPLETED-DIRECTIVES.md').read_bytes() == b'\n## 2026-10-08-120000\n\n' + whole + b'\n\n' + reason.encode() + b'\n'
+    assert (repo / fixture_name('COMPLETED-DIRECTIVES.md')).read_bytes() == b'\n## 2026-10-08-120000\n\n' + whole + b'\n\n' + reason.encode() + b'\n'
     assert [card['status'] for card in store(repo)._current_state().values()
             if card['origin']['logical'] == 'goal_files'] == ['done']
 
@@ -82,7 +83,7 @@ def test_project_shape_and_verbatim_target(repo):
     assert open_fixture(target=target, steps=['Draw', 'Build']) == 'Project "Model" opened.'
     expected = ('# Model\n\n- **Status:** open\n- **Serves:** none\n- **Target:** ' + target +
                 '\n\n## Steps\n\n- [ ] Draw\n- [ ] Build\n\n## Next step\n\nSketch').encode()
-    assert (repo / 'records/projects/model.md').read_bytes() == expected
+    assert (repo / fixture_name('records/projects/model.md')).read_bytes() == expected
     assert h.read_project(title='Model').encode() == expected
 
 
@@ -95,7 +96,7 @@ def test_project_shape_and_verbatim_target(repo):
 ])
 def test_advance_exact_spans(repo, before, done, added, expected_steps):
     open_fixture(steps=before, target='Café\r\n二')
-    path = repo / 'records/projects/model.md'
+    path = repo / fixture_name('records/projects/model.md')
     original = path.read_bytes()
     assert h.advance_project(title='Model', next_step='Measure', done_step=done, add_steps=added) == 'Project "Model" advanced.'
     prefix = original.split(b'## Steps\n\n', 1)[0]
@@ -104,7 +105,7 @@ def test_advance_exact_spans(repo, before, done, added, expected_steps):
 
 def test_advance_preserves_crlf_fixture_and_duplicate_step_order(repo):
     open_fixture(steps=['Draw', 'Draw'])
-    path = repo / 'records/projects/model.md'
+    path = repo / fixture_name('records/projects/model.md')
     write(path, path.read_bytes().replace(b'\n', b'\r\n') + b'\r\n')
     original = path.read_bytes()
     h.advance_project(title='Model', next_step='Réviser', done_step='Draw', add_steps=['測る'])
@@ -116,11 +117,11 @@ def test_advance_preserves_crlf_fixture_and_duplicate_step_order(repo):
 @pytest.mark.parametrize('outcome,reason', [('completed', ''), ('abandoned', 'Changed\r\n理由')])
 def test_close_changes_only_status_and_uses_harness_wake(repo, outcome, reason):
     open_fixture(steps=['Draw', 'Build'])
-    path = repo / 'records/projects/model.md'
+    path = repo / fixture_name('records/projects/model.md')
     old = path.read_bytes()
     assert h.close_project(title='Model', outcome=outcome, reason=reason) == f'Project "Model" closed as {outcome}.'
-    closed = repo / 'records/projects/closed/model-SR-0042.md'
-    status = f'- **Status:** {outcome} in SR-0042, 2026-10-08' + (f': {reason}' if outcome == 'abandoned' else '')
+    closed = repo / fixture_name('records/projects/closed/model-SR-0042.md')
+    status = fixture_name(f'- **Status:** {outcome} in SR-0042, 2026-10-08') + (f': {reason}' if outcome == 'abandoned' else '')
     assert closed.read_bytes() == old.replace(b'- **Status:** open', status.encode(), 1)
     assert not path.exists()
     assert h.read_project(title='Model').encode() == closed.read_bytes()
@@ -203,7 +204,7 @@ def test_stop_marker_guards_writes_and_leaves_reads_available(repo):
 def test_update_goals_old_behavior_then_exact_refusal(repo):
     original = '# Ambition\n\n' + 'Invented standing ambition. ' * 20
     assert 'updated' in h.update_goals(new_text=original)
-    folder = repo / 'records/goals'
+    folder = repo / fixture_name('records/goals')
     folder.mkdir()
     assert 'updated' in h.update_goals(new_text=original)
     h.set_goal(name='Learn', how='Read')
@@ -238,7 +239,7 @@ def test_read_goals_all_overflow_stages(repo, stage):
             g.set_goal(repo, f'Goal {i:03}', 'é' * 20)
         open_fixture(next_step='n' * 3000)
     else:
-        write(repo / 'DIRECTIVES.md', ('Whole ambition. ' * 600).encode())
+        write(repo / fixture_name('DIRECTIVES.md'), ('Whole ambition. ' * 600).encode())
         h.set_goal(name='Learn', how='Read')
         open_fixture()
     answer = h.read_goals()
@@ -247,7 +248,7 @@ def test_read_goals_all_overflow_stages(repo, stage):
     if stage < 4:
         assert len(answer.encode()) <= 8000
     else:
-        assert answer.startswith((repo / 'DIRECTIVES.md').read_bytes().decode())
+        assert answer.startswith((repo / fixture_name('DIRECTIVES.md')).read_bytes().decode())
         assert 'Goals: 1; open projects: 1; closed projects: 0.' in answer
     if stage == 1:
         assert '# Learn\n\nRead' in answer and 'é' * 20 not in answer
@@ -272,11 +273,11 @@ def test_cards_one_each_tags_closed_identity_and_idempotence(repo):
     h.advance_project(title='Model', next_step='Build')
     h.close_project(title='Model', outcome='completed')
     current = store(repo)._current_state()[project['id']]
-    assert current['status'] == 'done' and current['origin']['file'] == 'records/projects/closed/model-SR-0042.md'
-    assert c.read_card(repo / 'records', project['id'])['card'] == current
+    assert current['status'] == 'done' and current['origin']['file'] == fixture_name('records/projects/closed/model-SR-0042.md')
+    assert c.read_card(repo / fixture_name('records'), project['id'])['card'] == current
     args = dict(tags=[], kinds=['project'], config_path=repo / 'config/cards.json', record_read=False)
-    assert not c.recall(repo / 'records', **args)['cards']
-    assert c.recall(repo / 'records', history=True, **args)['cards'][0]['id'] == project['id']
+    assert not c.recall(repo / fixture_name('records'), **args)['cards']
+    assert c.recall(repo / fixture_name('records'), history=True, **args)['cards'][0]['id'] == project['id']
     before = store(repo).cards_path.read_bytes()
     for logical in ['goal_files', 'projects']:
         counts = recut(repo, logical)
@@ -292,7 +293,7 @@ def test_wake_order_and_all_project_summaries_within_both_budgets(repo):
         open_fixture(f'Project {i}', target='Large target ' * 400, next_step=f'Next {i}', serves=f'Goal {i}')
     store(repo).write({'kind': 'log', 'text': '# Latest log\n\nPlan next: fixture action.'},
                       wake='w041', source='self', channel='mission',
-                      origin={'logical': 'journal', 'file': 'records/shift-reports/SR-0041-2026-10-08.md', 'position': 0, 'order': 1})
+                      origin={'logical': 'journal', 'file': fixture_name('records/shift-reports/SR-0041-2026-10-08.md'), 'position': 0, 'order': 1})
     cfg = json.loads((repo / 'config/cards.json').read_bytes())
     cfg['wake_sections']['what_i_was_doing'] = 650
     cfg['wake_card_bytes'] = 1400
@@ -310,21 +311,21 @@ def test_wake_order_and_all_project_summaries_within_both_budgets(repo):
 def test_operator_move_byte_exact_heading_idempotence_and_recut(repo, capsys, monkeypatch, eol):
     ambition = b'# Goals' + eol + eol + b'## Ambition' + eol + eol + 'Café 🚀'.encode() + eol + eol
     moved = b'## Now' + eol + b'- Old fixture goal' + eol + '历史'.encode() + eol
-    write(repo / 'DIRECTIVES.md', ambition + moved)
-    write(repo / 'COMPLETED-DIRECTIVES.md', b'Previous archive\r\n')
+    write(repo / fixture_name('DIRECTIVES.md'), ambition + moved)
+    write(repo / fixture_name('COMPLETED-DIRECTIVES.md'), b'Previous archive\r\n')
     recut(repo, 'goals')
     before = [card for card in store(repo)._current_state().values() if b'Old fixture goal' in card['text'].encode()]
     assert before
     assert g.move_old_list(repo, '2026-10-08') == len(moved)
     heading = b'\n## Moved by the operator on 2026-10-08: the goals list as it stood before goals and projects became separate files\n\n'
-    assert (repo / 'DIRECTIVES.md').read_bytes() == ambition
-    assert (repo / 'COMPLETED-DIRECTIVES.md').read_bytes() == b'Previous archive\r\n' + heading + moved
+    assert (repo / fixture_name('DIRECTIVES.md')).read_bytes() == ambition
+    assert (repo / fixture_name('COMPLETED-DIRECTIVES.md')).read_bytes() == b'Previous archive\r\n' + heading + moved
     stable = snapshot(repo)
     assert g.move_old_list(repo, '2026-10-08') == 0
     assert snapshot(repo) == stable
     recut(repo, 'goals')
     assert all(store(repo)._current_state()[card['id']]['status'] == 'done' for card in before)
-    assert not (repo / 'records/goals').exists() and not (repo / 'records/projects').exists()
+    assert not (repo / fixture_name('records/goals')).exists() and not (repo / fixture_name('records/projects')).exists()
     monkeypatch.setattr(sys, 'argv', ['goals', 'move-old-list', '--repo-root', str(repo)])
     g.main()
     assert capsys.readouterr().out == 'Moved 0 bytes: no ## Now heading; nothing was changed.\n'
@@ -334,12 +335,12 @@ def test_no_now_heading_or_file_changes_nothing(repo):
     before = snapshot(repo)
     assert g.move_old_list(repo, '2026-10-08') == 0
     assert snapshot(repo) == before
-    (repo / 'DIRECTIVES.md').unlink()
+    (repo / fixture_name('DIRECTIVES.md')).unlink()
     assert g.move_old_list(repo, '2026-10-08') == 0
 
 
 def test_operator_module_command_on_fixture(repo):
-    write(repo / 'DIRECTIVES.md', b'# Ambition\n\n## Now\n- Invented old goal\n')
+    write(repo / fixture_name('DIRECTIVES.md'), b'# Ambition\n\n## Now\n- Invented old goal\n')
     import os
     env = dict(os.environ, PYTHONPATH=str(ROOT))
     result = subprocess.run([sys.executable, '-m', 'tools.goals', 'move-old-list'],
@@ -385,10 +386,10 @@ def test_mcp_tools_execute_as_advertised(repo):
 def test_target_headings_are_verbatim_and_never_mistaken_for_project_sections(repo):
     target = 'Café\r\n## Steps\r\n\r\n- [ ] Fake\r\n\r\n## Next step\r\n\r\nFake next'
     open_fixture(target=target, steps=['Real'])
-    old = (repo / 'records/projects/model.md').read_bytes()
+    old = (repo / fixture_name('records/projects/model.md')).read_bytes()
     h.advance_project(title='Model', next_step='Real next', done_step='Real')
     expected = old.replace(b'- [ ] Real', b'- [x] Real').replace(b'\n\nSketch', b'\n\nReal next')
-    assert (repo / 'records/projects/model.md').read_bytes() == expected
+    assert (repo / fixture_name('records/projects/model.md')).read_bytes() == expected
     assert g.project_parts(h.read_project(title='Model'))['next_step'] == 'Real next'
 
 
@@ -403,7 +404,7 @@ def test_stage_three_includes_later_lines_that_fit_in_file_order(repo):
 
 
 def test_ambition_only_overflow_without_new_folders(repo):
-    write(repo / 'DIRECTIVES.md', 'é' * 5000)
+    write(repo / fixture_name('DIRECTIVES.md'), 'é' * 5000)
     answer = h.read_goals()
     assert answer.startswith('é' * 5000)
     assert g.NOTICES[4] in answer and 'Goals: 0; open projects: 0; closed projects: 0.' in answer
@@ -411,7 +412,7 @@ def test_ambition_only_overflow_without_new_folders(repo):
 
 @pytest.mark.parametrize('ambition', ['a' * 7999, 'é' * 5000], ids=['7999-bytes', '10000-bytes'])
 def test_ambition_only_required_overhead_is_exact_and_never_dropped(repo, ambition):
-    write(repo / 'DIRECTIVES.md', ambition)
+    write(repo / fixture_name('DIRECTIVES.md'), ambition)
     h.set_goal(name='Learn', how='Whole how')
     open_fixture('Open', next_step='Next open')
     open_fixture('Closed')
@@ -429,7 +430,7 @@ def test_ambition_only_required_overhead_is_exact_and_never_dropped(repo, ambiti
 def test_stage_three_notice_overhead_never_breaks_limit(repo):
     # Its longer omitted-count wording may not fit although the compact answer does.
     ambition = 'a' * (8000 - 188)
-    write(repo / 'DIRECTIVES.md', ambition)
+    write(repo / fixture_name('DIRECTIVES.md'), ambition)
     h.set_goal(name='Learn', how='x' * 9000)
     answer = h.read_goals()
     assert len(answer.encode()) <= 8000
@@ -440,7 +441,7 @@ OLD_LIST = '# Goals\n\n## Ambition\n\nKeep learning.\n\n## Now\n\n- An invented 
 
 
 def test_read_goals_shows_the_old_list_whole_until_a_file_replaces_it(repo):
-    write(repo / 'DIRECTIVES.md', OLD_LIST)
+    write(repo / fixture_name('DIRECTIVES.md'), OLD_LIST)
     assert h.read_goals() == OLD_LIST
     h.open_project(title='Invented project', target='A page.', next_step='Draft it.')
     answer = h.read_goals()
@@ -453,7 +454,7 @@ def test_read_goals_shows_the_old_list_whole_until_a_file_replaces_it(repo):
 
 
 def test_read_goals_after_the_move_shows_only_the_ambition_and_the_files(repo):
-    write(repo / 'DIRECTIVES.md', OLD_LIST)
+    write(repo / fixture_name('DIRECTIVES.md'), OLD_LIST)
     h.set_goal(name='Invented goal', how='By one step a wake.')
     assert g.move_old_list(repo, '2026-10-08') > 0
     answer = h.read_goals()
@@ -463,7 +464,7 @@ def test_read_goals_after_the_move_shows_only_the_ambition_and_the_files(repo):
 
 def test_read_goals_old_list_is_whole_even_over_the_limit(repo):
     long_list = OLD_LIST + '- ' + 'x' * 9000 + '\n'
-    write(repo / 'DIRECTIVES.md', long_list)
+    write(repo / fixture_name('DIRECTIVES.md'), long_list)
     assert h.read_goals() == long_list
 
 
@@ -473,29 +474,29 @@ def test_title_reuse_preserves_two_closed_files_and_two_cards(repo, second_wake)
     open_fixture('Weekly audit', target='First target')
     first_id = next(card['id'] for card in store(repo)._current_state().values() if card['kind'] == 'project')
     h.close_project(title='Weekly audit', outcome='completed')
-    first = repo / 'records/projects/closed/weekly-audit-SR-0042.md'
+    first = repo / fixture_name('records/projects/closed/weekly-audit-SR-0042.md')
     first_bytes = first.read_bytes()
     first_card = store(repo)._current_state()[first_id]
     assert first_card['origin']['key'] == first.stem
     write(repo / 'budget.json', json.dumps({'wake_count': second_wake - 1}))
     assert open_fixture('Weekly audit', target='Second target') == 'Project "Weekly audit" opened.'
-    assert h.read_project(title='Weekly audit') == h.read_project(title='Weekly audit', closed_in='') == (repo / 'records/projects/weekly-audit.md').read_bytes().decode()
-    assert h.read_project(title='Weekly audit', closed_in='SR-0042').encode() == first_bytes
+    assert h.read_project(title='Weekly audit') == h.read_project(title='Weekly audit', closed_in='') == (repo / fixture_name('records/projects/weekly-audit.md')).read_bytes().decode()
+    assert h.read_project(title='Weekly audit', closed_in=fixture_name('SR-0042')).encode() == first_bytes
     h.close_project(title='Weekly audit', outcome='abandoned', reason='Finished this version.')
-    second = repo / 'records/projects/closed' / ('weekly-audit-SR-0042-2.md' if second_wake == 42 else 'weekly-audit-SR-0043.md')
+    second = repo / fixture_name('records/projects/closed') / (fixture_name('weekly-audit-SR-0042-2.md') if second_wake == 42 else fixture_name('weekly-audit-SR-0043.md'))
     assert first.read_bytes() == first_bytes
-    assert h.read_project(title='Weekly audit') == second.read_bytes().decode() + '\n\nEarlier closings: SR-0042.'
-    assert h.read_project(title='Weekly audit', closed_in=f'SR-{second_wake:04d}').encode() == second.read_bytes()
+    assert h.read_project(title='Weekly audit') == second.read_bytes().decode() + fixture_name('\n\nEarlier closings: SR-0042.')
+    assert h.read_project(title='Weekly audit', closed_in=fixture_name(f'SR-{second_wake:04d}')).encode() == second.read_bytes()
     if second_wake != 42:
-        assert h.read_project(title='Weekly audit', closed_in='SR-0042').encode() == first_bytes
+        assert h.read_project(title='Weekly audit', closed_in=fixture_name('SR-0042')).encode() == first_bytes
     projects = [card for card in store(repo)._current_state().values() if card['kind'] == 'project']
     assert len(projects) == 2 and {card['status'] for card in projects} == {'done'}
     assert store(repo)._current_state()[first_id] == first_card
     assert {card['origin']['key'] for card in projects} == {first.stem, second.stem}
     for card in projects:
-        assert c.read_card(repo / 'records', card['id'])['card'] == card
+        assert c.read_card(repo / fixture_name('records'), card['id'])['card'] == card
     args = dict(tags=[], kinds=['project'], config_path=repo / 'config/cards.json', record_read=False)
-    assert len(c.recall(repo / 'records', history=True, **args)['cards']) == 2
+    assert len(c.recall(repo / fixture_name('records'), history=True, **args)['cards']) == 2
     before = store(repo).cards_path.read_bytes()
     counts = recut(repo, 'projects')
     assert counts['made'] == counts['changed'] == counts['closed'] == 0
@@ -506,35 +507,35 @@ def test_third_closing_in_one_wake_uses_next_suffix(repo):
     for number in range(3):
         open_fixture('Weekly audit', target=f'Target {number}')
         h.close_project(title='Weekly audit', outcome='completed')
-    folder = repo / 'records/projects/closed'
+    folder = repo / fixture_name('records/projects/closed')
     assert {p.name for p in folder.glob('*.md')} == {
-        'weekly-audit-SR-0042.md', 'weekly-audit-SR-0042-2.md', 'weekly-audit-SR-0042-3.md'}
-    assert h.read_project(title='Weekly audit') == (folder / 'weekly-audit-SR-0042-3.md').read_bytes().decode() + '\n\nEarlier closings: SR-0042, SR-0042.'
+        fixture_name('weekly-audit-SR-0042.md'), fixture_name('weekly-audit-SR-0042-2.md'), fixture_name('weekly-audit-SR-0042-3.md')}
+    assert h.read_project(title='Weekly audit') == (folder / fixture_name('weekly-audit-SR-0042-3.md')).read_bytes().decode() + fixture_name('\n\nEarlier closings: SR-0042, SR-0042.')
     assert len([card for card in store(repo)._current_state().values() if card['kind'] == 'project']) == 3
 
 
 def test_old_and_new_closed_namings_coexist_and_open_does_not_overwrite_legacy_card(repo):
     open_fixture('Weekly audit', target='Legacy target')
-    path = repo / 'records/projects/weekly-audit.md'
-    legacy = repo / 'records/projects/closed/weekly-audit.md'
-    write(legacy, path.read_bytes().replace(b'- **Status:** open', b'- **Status:** completed in SR-0040, 2026-10-06'))
+    path = repo / fixture_name('records/projects/weekly-audit.md')
+    legacy = repo / fixture_name('records/projects/closed/weekly-audit.md')
+    write(legacy, path.read_bytes().replace(b'- **Status:** open', fixture_name(b'- **Status:** completed in SR-0040, 2026-10-06')))
     path.unlink()
     recut(repo, 'projects')
     legacy_bytes = legacy.read_bytes()
     legacy_card = next(card for card in store(repo)._current_state().values()
-                       if card['origin']['file'] == 'records/projects/closed/weekly-audit.md')
+                       if card['origin']['file'] == fixture_name('records/projects/closed/weekly-audit.md'))
     assert h.read_project(title='Weekly audit').encode() == legacy_bytes
     open_fixture('Weekly audit', target='New target')
     h.close_project(title='Weekly audit', outcome='completed')
-    latest = repo / 'records/projects/closed/weekly-audit-SR-0042.md'
-    assert h.read_project(title='Weekly audit') == latest.read_bytes().decode() + '\n\nEarlier closings: SR-0040.'
-    assert h.read_project(title='Weekly audit', closed_in='SR-0040').encode() == legacy_bytes
-    assert h.read_project(title='Weekly audit', closed_in='SR-0042').encode() == latest.read_bytes()
+    latest = repo / fixture_name('records/projects/closed/weekly-audit-SR-0042.md')
+    assert h.read_project(title='Weekly audit') == latest.read_bytes().decode() + fixture_name('\n\nEarlier closings: SR-0040.')
+    assert h.read_project(title='Weekly audit', closed_in=fixture_name('SR-0040')).encode() == legacy_bytes
+    assert h.read_project(title='Weekly audit', closed_in=fixture_name('SR-0042')).encode() == latest.read_bytes()
     assert legacy.read_bytes() == legacy_bytes and store(repo)._current_state()[legacy_card['id']] == legacy_card
     assert len([card for card in store(repo)._current_state().values() if card['kind'] == 'project']) == 2
 
 
-@pytest.mark.parametrize('closed_in', ['SR-0999', '42', '../SR-0042'])
+@pytest.mark.parametrize('closed_in', [fixture_name('SR-0999'), '42', fixture_name('../SR-0042')])
 def test_read_project_missing_or_invalid_wake_refuses_without_changes(repo, closed_in):
     open_fixture()
     h.close_project(title='Model', outcome='completed')
@@ -553,7 +554,7 @@ def test_drop_goal_names_serving_projects_exactly_without_editing_them(repo, cou
         open_fixture(f'Audit {i}', serves='Learn')
     open_fixture('Finished audit', serves='Learn')
     h.close_project(title='Finished audit', outcome='completed')
-    folder = repo / 'records/projects'
+    folder = repo / fixture_name('records/projects')
     before = {p.relative_to(folder): p.read_bytes() for p in folder.rglob('*.md')}
     answer = h.drop_goal(name='Learn', reason='Changed direction.')
     expected = 'Goal "Learn" archived and removed.'
@@ -574,7 +575,7 @@ def test_serve_project_preserves_all_other_bytes_and_updates_tag(repo, serves):
     h.set_goal(name='Learn', how='Read')
     h.set_goal(name='Make café', how='Practice')
     open_fixture(serves='Learn', target='Café\r\n目标')
-    path = repo / 'records/projects/model.md'
+    path = repo / fixture_name('records/projects/model.md')
     write(path, path.read_bytes().replace(b'\n', b'\r\n').replace(b'\r\r\n', b'\r\n'))
     original = path.read_bytes()
     recut(repo, 'projects')
@@ -602,12 +603,12 @@ def test_serve_project_unknown_goal_or_closed_project_refuses_without_changes(re
 @pytest.mark.parametrize('text', ['Keep learning.', 'Écrire café.\r\n第二行 🚀\r\n', 'é' * 10000], ids=['sentence', 'crlf-unicode', 'large'])
 def test_set_ambition_exact_bytes_backup_and_card_with_no_shrink_or_size_guard(repo, monkeypatch, text):
     h.set_goal(name='Learn', how='Read')
-    old = (repo / 'DIRECTIVES.md').read_bytes()
+    old = (repo / fixture_name('DIRECTIVES.md')).read_bytes()
     monkeypatch.setattr(h, 'session_active', lambda **kwargs: pytest.fail('No content guard or admin override is needed'))
     assert h.set_ambition(text=text) == 'Standing ambition updated.'
     # The fixture file opens with two heading lines; they are kept, his text follows byte for byte.
-    assert (repo / 'DIRECTIVES.md').read_bytes() == b'# Goals\n\n## Ambition\n\n' + text.encode()
-    backups = list(repo.glob('DIRECTIVES.md.*.bak'))
+    assert (repo / fixture_name('DIRECTIVES.md')).read_bytes() == b'# Goals\n\n## Ambition\n\n' + text.encode()
+    backups = list(repo.glob(fixture_name('DIRECTIVES.md.*.bak')))
     assert len(backups) == 1 and backups[0].read_bytes() == old
     active = [card for card in store(repo)._current_state().values()
               if card['origin']['logical'] == 'goals' and card['status'] == 'live']
@@ -618,11 +619,11 @@ def test_set_ambition_exact_bytes_backup_and_card_with_no_shrink_or_size_guard(r
 
 @pytest.mark.parametrize('old', [OLD_LIST, OLD_LIST.replace('\n', '\r\n')])
 def test_set_ambition_unmoved_old_list_refuses_exactly_without_changes(repo, old):
-    write(repo / 'DIRECTIVES.md', old)
+    write(repo / fixture_name('DIRECTIVES.md'), old)
     before = snapshot(repo)
     assert h.set_ambition(text='New ambition.') == g.AMBITION_OLD_LIST_REFUSAL
     assert snapshot(repo) == before
-    assert g.AMBITION_OLD_LIST_REFUSAL.endswith('amend_directives(new_text="<the whole file>").')
+    assert g.AMBITION_OLD_LIST_REFUSAL.endswith(fixture_name('amend_directives(new_text="<the whole file>").'))
 
 
 @pytest.mark.parametrize('text', ['', ' \r\n\t '])
@@ -659,14 +660,14 @@ def test_follow_up_tools_help_and_mcp_execution(repo):
 
 
 def test_set_ambition_keeps_the_heading_unless_he_gives_one(repo):
-    write(repo / 'DIRECTIVES.md', b'## The standing ambition\r\n\r\nOld text.\r\n')
+    write(repo / fixture_name('DIRECTIVES.md'), b'## The standing ambition\r\n\r\nOld text.\r\n')
     assert h.set_ambition(text='New text.\r\n') == 'Standing ambition updated.'
-    assert (repo / 'DIRECTIVES.md').read_bytes() == b'## The standing ambition\r\n\r\nNew text.\r\n'
+    assert (repo / fixture_name('DIRECTIVES.md')).read_bytes() == b'## The standing ambition\r\n\r\nNew text.\r\n'
     assert h.set_ambition(text='# My own heading\n\nOther text.\n') == 'Standing ambition updated.'
-    assert (repo / 'DIRECTIVES.md').read_bytes() == b'# My own heading\n\nOther text.\n'
+    assert (repo / fixture_name('DIRECTIVES.md')).read_bytes() == b'# My own heading\n\nOther text.\n'
 
 
 def test_set_ambition_on_a_file_with_no_heading_replaces_it_whole(repo):
-    write(repo / 'DIRECTIVES.md', b'Just a sentence.\n')
+    write(repo / fixture_name('DIRECTIVES.md'), b'Just a sentence.\n')
     assert h.set_ambition(text='Another sentence.') == 'Standing ambition updated.'
-    assert (repo / 'DIRECTIVES.md').read_bytes() == b'Another sentence.'
+    assert (repo / fixture_name('DIRECTIVES.md')).read_bytes() == b'Another sentence.'
