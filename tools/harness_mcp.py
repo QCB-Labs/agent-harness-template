@@ -961,6 +961,15 @@ def write_journal(content: str) -> str:
 
     base_name = f"{names.wake_id(wake_count)}-{now.strftime('%Y-%m-%d')}"
 
+    # Which models made this wake's calls, counted from the driver's own
+    # record. Measured, never asked of the model; absent when nothing is
+    # configured or the record cannot be read.
+    try:
+        from tools import driver_record
+        content += driver_record.footer(REPO)
+    except Exception:
+        pass
+
     # Crash-safe: write recovery file first
     stamp = now.strftime("%Y-%m-%d-%H%M%S")
     recovery_path = journal_dir / f"{UNRECORDED_PREFIX}{stamp}.md"
