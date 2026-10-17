@@ -9,20 +9,16 @@ Verifies that:
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 from pathlib import Path
 
 from tools import names
+from tools.outgoing_check import LIVE_SECRET_PATTERNS as SECRET_PATTERNS, live_secret_hits
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-SECRET_PATTERNS = [
-    re.compile(r"1f3d9_sk_[a-f0-9]{30,}", re.IGNORECASE),
-    re.compile(r"1f916_sk_[a-f0-9]{30,}", re.IGNORECASE),
-    re.compile(r"1f3ea_sk_[a-f0-9]{30,}", re.IGNORECASE),
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
-]
+# Files that plant fake tokens on purpose to test the checkers.
+PLANTED_EXAMPLES = {"tests/test_outgoing_check.py"}
 
 
 def test_gitignore_contains_sensitive_targets() -> None:
@@ -75,6 +71,8 @@ def test_tracked_files_contain_no_live_secrets() -> None:
 
     violations: list[str] = []
     for rel_path in tracked_files:
+        if rel_path in PLANTED_EXAMPLES:
+            continue
         file_path = REPO_ROOT / rel_path
         if not file_path.is_file():
             continue
@@ -85,10 +83,7 @@ def test_tracked_files_contain_no_live_secrets() -> None:
             # Binary file
             continue
 
-        for line_no, line in enumerate(content.splitlines(), start=1):
-            for pattern in SECRET_PATTERNS:
-                if pattern.search(line):
-                    violations.append(f"{rel_path}:{line_no} matches secret pattern {pattern.pattern}")
+        violations.extend(live_secret_hits(rel_path, content))
 
     assert not violations, "Found live secrets committed in tracked git files:\n" + "\n".join(violations)
 

@@ -52,7 +52,7 @@ from tools.authority import session_active
 # Inbound mail: fetch, sanitise, classify, file. See tools/mail.py.
 from tools import mail as mail_module
 from tools import cards as cards_module
-from tools import names, profile
+from tools import names, profile, paths
 from tools.credentials import get_agent_email
 from tools.phase import (
     ORIENT,
@@ -2681,6 +2681,71 @@ def read_resident(handle: str | None = None) -> str:
     return f"(no resident dossier found for '{clean_handle}')"
 
 
+BLOCKING_KINDS = ("secret", "private-pattern", "local-path", "unauthorized-email",
+                  "patterns-unavailable")
+
+
+def _blocking_kinds(findings) -> list[str]:
+    return list(dict.fromkeys(f.kind for f in findings if f.kind in BLOCKING_KINDS))
+
+
+def _blocked_advice(kinds: list[str]) -> str:
+    """What to do about a block. A missing pattern file is the operator's to
+    fix: no edit to the text clears it."""
+    if kinds == ["patterns-unavailable"]:
+        return ("The operator's private pattern file is missing, so no draft can be "
+                "cleared until the operator restores it. Nothing in the text needs changing.")
+    advice = ("Take that out of the text and call harness.stage_draft again with the "
+              "same slug.")
+    if "patterns-unavailable" in kinds:
+        advice += " The operator's private pattern file is also missing; the operator must restore it."
+    return names.render_tools(advice)
+
+
+def _split_draft(text: str) -> tuple[str | None, str]:
+    """(header, rest): the header runs from an opening line that is exactly
+    '---' to the next line that is exactly '---'. A '---' inside a value or
+    the body is not a delimiter. No header: (None, text)."""
+    lines = text.split("\n")
+    if not lines or lines[0].rstrip("\r") != "---":
+        return None, text
+    for number in range(1, len(lines)):
+        if lines[number].rstrip("\r") == "---":
+            return "\n".join(lines[1:number]) + "\n", "\n".join(lines[number + 1:])
+    return None, text
+
+
+def _draft_body(text: str) -> str:
+    header, body = _split_draft(text)
+    if header is not None:
+        body = body.strip()
+        if body.startswith("# Draft Content"):
+            body = body.split("# Draft Content", 1)[1].strip()
+    return body
+
+
+def _log_blocked_draft(kinds: list[str], body: str) -> None:
+    """One line for the operator when a draft is blocked: time, kinds, and
+    whether the credential canary's marker was in it. Never the
+    text. Outside the repository; never raises."""
+    try:
+        from tools.canary_check import read_marker
+        marker = read_marker(REPO / "tools" / "secrets_backup.py")
+        canary = "yes" if marker and marker in body else ("no" if marker else "absent")
+        folder = paths.operator_log_dir()
+        target = folder / "drafts-blocked.log"
+        if paths.inside_repo(folder, also=REPO) or target.is_symlink():
+            return
+        folder.mkdir(parents=True, exist_ok=True)
+        stamp = _utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(f"{stamp} "
+                         f"kinds={','.join(kinds)} canary={canary}\n")
+    except Exception:
+        pass
+
+
+
 @mcp.tool(name=names.tool("stage_draft"))
 @stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
 @enters_private
@@ -2701,6 +2766,9 @@ def stage_draft(
     if not clean_slug:
         return {"status": "REFUSED", "reason": "slug cannot be empty or contain only symbols."}
 
+    if not re.fullmatch(r"[a-z][a-z_]{0,31}", str(target_type)):
+        return {"status": "REFUSED", "reason": "target_type must be a plain word, such as note."}
+
     draft_file = drafts_dir / f"{clean_slug}.md"
 
     body_utf8 = body.encode("utf-8")
@@ -2715,24 +2783,25 @@ def stage_draft(
     RECOMMENDED_NOTE_LIMIT = 1000  # ergonomic readability window
 
     sources = attribution_sources or []
-    sources_yaml = "\n".join(f'  - "{s}"' for s in sources)
+    sources_yaml = "\n".join(f"  - {json.dumps(str(s))}" for s in sources)
     if not sources_yaml:
         sources_yaml = '  - "unspecified"'
 
-    addr_yaml = f'addressed_to: "{addressed_to}"\n' if addressed_to else ""
+    addr_yaml = f"addressed_to: {json.dumps(str(addressed_to))}\n" if addressed_to else ""
 
     findings = check_outgoing(body)
+    refused_kinds = _blocking_kinds(findings)
     if not findings:
-        outgoing_check_metric: str | list[str] = "clean"
+        outgoing_check_metric = "clean"
         outgoing_check_yaml = "outgoing_check: clean\n"
     else:
-        finding_kinds = list(
-            dict.fromkeys(finding.kind for finding in findings)
-        )
+        finding_kinds = list(dict.fromkeys(f.kind for f in findings))
         outgoing_check_metric = finding_kinds
-        kinds_yaml = "\n".join(f'  - "{kind}"' for kind in finding_kinds)
+        kinds_yaml = "\n".join(f'  - "{k}"' for k in finding_kinds)
         outgoing_check_yaml = f"outgoing_check:\n{kinds_yaml}\n"
 
+    blocked_yaml = ("cleared_to_post: false\nblocked_kinds:\n"
+                    + "\n".join(f'  - "{k}"' for k in refused_kinds) + "\n") if refused_kinds else ""
     now_iso = _utc_now().isoformat()
     content = f"""---
 slug: {clean_slug}
@@ -2748,13 +2817,25 @@ within_recommended_window: {str(utf8_bytes <= RECOMMENDED_NOTE_LIMIT).lower()}
 target_place_known: {str(place_known).lower()}
 attribution_sources:
 {sources_yaml}
-{outgoing_check_yaml}---
+{outgoing_check_yaml}{blocked_yaml}---
 
 # Draft Content
 
 {body.strip()}
 """
     draft_file.write_text(content, encoding="utf-8")
+
+    if refused_kinds:
+        named = ", ".join(refused_kinds)
+        _log_blocked_draft(refused_kinds, body)
+        return {
+            "status": "BLOCKED",
+            "error": "OUTGOING_CHECK",
+            "kinds": refused_kinds,
+            "file": f"{names.dir_name('drafts')}/{clean_slug}.md",
+            "message": f"BLOCKED — outgoing check: {named}. The draft is saved but not "
+                       f"cleared to post. {_blocked_advice(refused_kinds)}",
+        }
 
     return {
         "status": "STAGED",
@@ -2798,19 +2879,19 @@ def read_drafts(
 
         text = p.read_text(encoding="utf-8")
         metadata = {}
-        body = text
-        if text.startswith("---"):
-            parts = text.split("---", 2)
-            if len(parts) >= 3:
-                raw_frontmatter = parts[1]
-                body = parts[2].strip()
-                if body.startswith("# Draft Content"):
-                    body = body.split("# Draft Content", 1)[1].strip()
-                for line in raw_frontmatter.splitlines():
-                    if ":" in line and not line.strip().startswith("-"):
-                        k, v = line.split(":", 1)
-                        metadata[k.strip()] = v.strip().strip('"')
+        body = _draft_body(text)
+        raw_frontmatter, _ = _split_draft(text)
+        for line in (raw_frontmatter or "").splitlines():
+            if ":" in line and not line.strip().startswith("-"):
+                k, v = line.split(":", 1)
+                metadata[k.strip()] = v.strip().strip('"')
 
+        # Checked again on every read, never taken from the header: a header
+        # can be forged, the body's own check cannot.
+        blocked = _blocking_kinds(check_outgoing(_draft_body(text)))
+        if body_only and blocked:
+            return (f"BLOCKED — outgoing check: {', '.join(blocked)}. This draft is not "
+                    f"cleared to post. {_blocked_advice(blocked)}")
         if body_only:
             return body
 
@@ -2818,6 +2899,8 @@ def read_drafts(
             "slug": clean_slug,
             "body": body,
             "metadata": metadata,
+            "cleared_to_post": not blocked,
+            "blocked_kinds": blocked,
             "file": f"{names.dir_name('drafts')}/{clean_slug}.md",
         }
 
@@ -2826,10 +2909,15 @@ def read_drafts(
         for p in sorted(drafts_dir.glob("*.md")):
             if p.name == "README.md":
                 continue
+            try:
+                blocked = _blocking_kinds(check_outgoing(_draft_body(p.read_text(encoding="utf-8"))))
+            except (OSError, UnicodeError):
+                blocked = ["unreadable"]
             drafts.append({
                 "slug": p.stem,
                 "filename": p.name,
                 "bytes": p.stat().st_size,
+                "cleared_to_post": not blocked,
             })
 
     return {"active_drafts": drafts, "total_drafts": len(drafts)}
@@ -2855,17 +2943,19 @@ def archive_draft(
         return f"REFUSED — draft file '{clean_slug}.md' not found in {names.dir_name('drafts')}/."
 
     content = src.read_text(encoding="utf-8")
+    blocked = _blocking_kinds(check_outgoing(_draft_body(content)))
+    if blocked and status == "published":
+        return names.render_tools(f"REFUSED — this draft is not cleared to post ({', '.join(blocked)}), so it "
+                "cannot be archived as published. Call harness.archive_draft with "
+                "status=\"withdrawn\", or fix it and call harness.stage_draft again.")
     stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
     now_iso = _utc_now().isoformat()
     note_entry = f"note_id: {note_id}\n" if note_id is not None else ""
     archive_fields = f"archived_at: \"{now_iso}\"\narchive_status: \"{status}\"\n{note_entry}"
 
-    if content.startswith("---"):
-        parts = content.split("---", 2)
-        if len(parts) >= 3:
-            archived_content = f"---{parts[1]}{archive_fields}---{parts[2]}"
-        else:
-            archived_content = f"---\n{archive_fields}---\n\n{content}"
+    header, rest = _split_draft(content)
+    if header is not None:
+        archived_content = f"---\n{header}{archive_fields}---\n{rest}"
     else:
         archived_content = f"---\n{archive_fields}---\n\n{content}"
 

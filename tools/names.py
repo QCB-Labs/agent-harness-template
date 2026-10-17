@@ -110,5 +110,5 @@ def render_tools(text: str) -> str:
     """Render tool call names in guidance through the active naming scheme."""
     import re
     for function, exposed in load()["tools"].items():
-        text = re.sub(r"\b" + re.escape(function) + r"(?=\(| REFUSED)", lambda match: exposed, text)
+        text = re.sub(r"\b" + re.escape(function) + r"\b", lambda match: exposed, text)
     return text

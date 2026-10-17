@@ -95,41 +95,50 @@ def _get_pattern_file_path() -> Path:
     return Path.home() / ".git-hooks" / "private-patterns.txt"
 
 
-def _check_private_patterns(text: str) -> list[Finding]:
+UNAVAILABLE = [Finding(kind="patterns-unavailable", detail="pattern file missing or unreadable")]
+
+
+def load_private_patterns() -> list[str] | None:
+    """Read the private pattern file once: lower-cased patterns, blanks and
+    '#' lines skipped. None when the file is missing or unreadable.
+
+    A scan loads at its start and passes the list down; nothing is cached
+    between scans, so an edit to the file is seen by the next one."""
     pattern_path = _get_pattern_file_path()
     if not pattern_path.is_file():
-        return [
-            Finding(
-                kind="patterns-unavailable",
-                detail="pattern file missing or unreadable",
-            )
-        ]
-
+        return None
     try:
         content = pattern_path.read_text(encoding="utf-8")
-    except OSError:
-        return [
-            Finding(
-                kind="patterns-unavailable",
-                detail="pattern file missing or unreadable",
-            )
-        ]
-
-    findings: list[Finding] = []
-    text_lower = text.lower()
+    except (OSError, UnicodeError):
+        return None
+    patterns = []
     for line in content.splitlines():
         pattern = line.strip()
-        if not pattern or pattern.startswith("#"):
-            continue
-        pos = text_lower.find(pattern.lower())
+        if pattern and not pattern.startswith("#"):
+            patterns.append(pattern.lower())
+    return patterns
+
+
+def check_loaded_patterns(text: str, patterns: list[str] | None) -> list[Finding]:
+    """Check text against a list from load_private_patterns()."""
+    if patterns is None:
+        return list(UNAVAILABLE)
+    text_lower = text.lower()
+    findings: list[Finding] = []
+    for pattern in patterns:
+        pos = text_lower.find(pattern)
         if pos != -1:
-            findings.append(
-                Finding(
-                    kind="private-pattern",
-                    detail=f"matched at character offset {pos}",
-                )
-            )
+            findings.append(Finding(
+                kind="private-pattern",
+                detail=f"matched at character offset {pos}",
+            ))
     return findings
+
+
+def _check_private_patterns(text: str) -> list[Finding]:
+    """Check text against the private pattern file (loads it each call;
+    for many lines, load once and use check_loaded_patterns)."""
+    return check_loaded_patterns(text, load_private_patterns())
 
 
 def _check_local_paths(text: str) -> list[Finding]:
@@ -357,3 +366,27 @@ def check_outgoing(text: str, html: str | None = None) -> list[Finding]:
     if html is not None:
         findings.extend(_check_html(html))
     return findings
+
+
+# The commit secret policy, shared by the staged commit check and the
+# tracked-file test: the city's own keys, private keys, and every token
+# family the outgoing check knows (the operator, 15 Oct). Public keys are not
+# secrets, so the private-key form is used, not the outgoing check's
+# broader "KEY-----".
+LIVE_SECRET_PATTERNS = [
+    re.compile(r"1f3d9_sk_[a-f0-9]{30,}", re.IGNORECASE),
+    re.compile(r"1f916_sk_[a-f0-9]{30,}", re.IGNORECASE),
+    re.compile(r"1f3ea_sk_[a-f0-9]{30,}", re.IGNORECASE),
+    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----"),
+] + [pattern for name, pattern in SECRET_PATTERNS
+     if name in {"sk-token", "gh-token", "aiza-key", "xoxb-token"}]
+
+
+def live_secret_hits(rel_path: str, content: str) -> list[str]:
+    """Return the existing hygiene diagnostics without exposing matched text."""
+    return [
+        f"{rel_path}:{line_no} matches secret pattern {pattern.pattern}"
+        for line_no, line in enumerate(content.splitlines(), start=1)
+        for pattern in LIVE_SECRET_PATTERNS
+        if pattern.search(line)
+    ]

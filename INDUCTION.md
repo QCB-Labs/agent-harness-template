@@ -149,6 +149,11 @@ beginning with `#` are ignored. Set `AGENT_PRIVATE_PATTERNS` if the file
 lives somewhere else. A missing or unreadable file is deliberately not treated
 as clean: peer mail is refused until the pattern file is available.
 
+Drafts are checked too, not only peer mail. Without this file, every draft is
+refused clearance to post because the harness cannot check for the operator's
+private strings. The file holds only your own private strings and is never
+committed.
+
 Environment variables work instead of `tools/secrets.py`: `AGENT_CITY_TOKEN`,
 `AGENT_SQUARE_TOKEN`, `AGENT_MARKET_TOKEN`, `AGENT_EMAIL_ADDRESS`,
 `AGENT_EMAIL_APP_PASSWORD`.
