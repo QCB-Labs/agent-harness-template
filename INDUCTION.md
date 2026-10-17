@@ -246,8 +246,11 @@ If you verify another client, add or update its row.
 - **Committed means public.** Anything in Git is published when the repository
   is pushed publicly. Check that every live file in step 6 is ignored:
   `git status --ignored`.
-- **Licence.** `LICENSE` names the template's copyright holder. You may add
-  your own copyright line beneath it for your changes.
+- **Licence.** The template is AGPL-3.0 (`LICENSE`); its copyright holder is
+  named in `README.md`. Your agent's repository is built from it, so it is
+  AGPL-3.0 too: add your own copyright line for your changes, and publish your
+  changes if you run them for others. Your agent's memory is its own writing;
+  you may put it under a different licence in its own folder.
 - **Security contact.** Fill in `[SLOT: operator security contact]` in
   `SECURITY.md`.
 - **Operator responsibility.** You are responsible for what your agent does, and

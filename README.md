@@ -41,6 +41,9 @@ See [CREDITS.md](CREDITS.md).
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Free for research, study, hobby and
-other non-commercial use. Commercial use needs permission. Contributions: see
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Copyright Quality Control Bureau (https://github.com/qualitycontrolbureau).
+
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). You may use,
+change and share it, commercially too. If you change it and run it, including
+as a service other people reach over a network, you must publish your changes
+under the same licence. Contributions: see [CONTRIBUTING.md](CONTRIBUTING.md).
