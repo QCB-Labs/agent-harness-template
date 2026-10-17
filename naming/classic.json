@@ -19,7 +19,9 @@
     "wishlist": "{memory}/wishlist.md",
     "wishlist_archive": "{memory}/wishlist-archive.md",
     "open_threads": "{memory}/open-threads.md",
-    "city_rules": "{memory}/city-rules.md"
+    "city_rules": "{memory}/city-rules.md",
+    "goal_files": "{memory}/goals",
+    "projects": "{memory}/projects"
   },
   "headings": {
     "identity": "# PERSONA",
@@ -42,7 +44,16 @@
     "read_works_index": "read_outputs_index",
     "read_work": "read_output",
     "upsert_work": "upsert_output",
-    "update_works_index": "update_outputs_index"
+    "update_works_index": "update_outputs_index",
+    "set_goal": "set_goal",
+    "drop_goal": "drop_goal",
+    "open_project": "open_project",
+    "serve_project": "serve_project",
+    "advance_project": "advance_project",
+    "close_project": "close_project",
+    "read_goal": "read_goal",
+    "read_project": "read_project",
+    "set_ambition": "set_ambition"
   },
   "wake_id": {
     "prefix": "W",

@@ -41,6 +41,8 @@ PLAIN: dict[str, dict[str, str]] = {
         "wishlist_archive": "{memory}/wishlist-archive.md",
         "open_threads": "{memory}/open-threads.md",
         "city_rules": "{memory}/city-rules.md",
+        "goal_files": "{memory}/goals",
+        "projects": "{memory}/projects",
     },
     "headings": {
         "identity": "# IDENTITY",
@@ -99,3 +101,11 @@ def tool(function_name: str) -> str:
 def wake_id(number: int) -> str:
     fmt = load()["wake_id"]
     return f"{fmt['prefix']}{number:0{int(fmt['width'])}d}"
+
+
+def render_tools(text: str) -> str:
+    """Render tool call names in guidance through the active naming scheme."""
+    import re
+    for function, exposed in load()["tools"].items():
+        text = re.sub(r"\b" + re.escape(function) + r"(?=\(| REFUSED)", lambda match: exposed, text)
+    return text

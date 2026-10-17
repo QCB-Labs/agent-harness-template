@@ -19,7 +19,9 @@
     "wishlist": "{memory}/wishlist.md",
     "wishlist_archive": "{memory}/wishlist-archive.md",
     "open_threads": "{memory}/open-threads.md",
-    "city_rules": "{memory}/city-rules.md"
+    "city_rules": "{memory}/city-rules.md",
+    "goal_files": "{memory}/goals",
+    "projects": "{memory}/projects"
   },
   "headings": {
     "identity": "# IDENTITY",
@@ -31,7 +33,16 @@
   "tools": {
     "recall": "recall",
     "read_card": "read_card",
-    "read_wake_card": "read_wake_card"
+    "read_wake_card": "read_wake_card",
+    "set_goal": "set_goal",
+    "drop_goal": "drop_goal",
+    "open_project": "open_project",
+    "serve_project": "serve_project",
+    "advance_project": "advance_project",
+    "close_project": "close_project",
+    "read_goal": "read_goal",
+    "read_project": "read_project",
+    "set_ambition": "set_ambition"
   },
   "wake_id": {
     "prefix": "W",

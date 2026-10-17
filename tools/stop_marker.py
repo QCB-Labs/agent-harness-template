@@ -292,7 +292,7 @@ def lift(root: Path, operator_reason: str, before=None) -> tuple[str, int]:
         return marker, count
 
 
-def refuse_when_stopped(root_getter, *, structured: bool = False):
+def refuse_when_stopped(root_getter, *, structured: bool = False, call: str | None = None):
     """Guard writes before phase, private context, validation or outbound work."""
     def decorate(function):
         @functools.wraps(function)
@@ -302,6 +302,10 @@ def refuse_when_stopped(root_getter, *, structured: bool = False):
             except (OSError, ValueError):
                 refusal = CHECK_FAILURE
             if refusal:
+                if call is not None:
+                    tool = call.split("(", 1)[0]
+                    fact = "STOP.md is set." if refusal == REFUSAL else "The stop marker could not be checked."
+                    refusal = f"{tool} REFUSED: nothing was changed. {fact} Call {call}."
                 return {"error": "STOP_MARKER", "message": refusal} if structured else refusal
             return function(*args, **kwargs)
         return guarded

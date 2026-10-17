@@ -68,6 +68,7 @@ from tools.correspondents import UnknownCorrespondent, resolve as resolve_corres
 from tools.canary_check import canary_summary
 from tools.outgoing_check import check_outgoing
 from tools import stop_marker
+from tools import goals as goals_module
 
 
 def _resolve_repo() -> Path:
@@ -119,6 +120,7 @@ def safe_replace_file(
     min_chars: int,
     max_shrink: float,
     required_first_line: str | None = None,
+    *, preserve_bytes: bool = False,
 ) -> tuple[bool, str | None, Path | None]:
     """Safely replace one full-file memory document.
 
@@ -171,7 +173,10 @@ def safe_replace_file(
         f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
     )
     try:
-        temp_path.write_text(new_text, encoding="utf-8")
+        if preserve_bytes:
+            temp_path.write_bytes(new_text.encode("utf-8"))
+        else:
+            temp_path.write_text(new_text, encoding="utf-8")
         os.replace(temp_path, path)
     finally:
         temp_path.unlink(missing_ok=True)
@@ -243,8 +248,11 @@ def read_operator() -> str:
 
 @mcp.tool(name=names.tool("read_goals"))
 def read_goals() -> str:
-    """Return the agent's current goals document."""
-    return _read_text(Path(names.rel("goals")), f"{names.rel('goals')} not found")
+    """Return standing ambition, goals and projects, preserving any legacy list."""
+    with _file_lock("goals"):
+        path = REPO / names.rel("goals")
+        legacy = goals_module.text(path) if path.is_file() else f"{names.rel('goals')} not found"
+        return goals_module.read_goals(REPO, legacy)
 
 
 @mcp.tool(name=names.tool("recall"))
@@ -1049,16 +1057,157 @@ def _ignore_unknown_arguments(fn):
     return wrapper
 
 
+@mcp.tool(name=names.tool("set_goal"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["set_goal"])
+def set_goal(name: str, how: str) -> str:
+    """Creates the goal's file, or replaces its how if the file exists."""
+    with _file_lock("goals"):
+        try:
+            path = goals_module.set_goal(REPO, name, how)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("set_goal", str(error))
+        _recut_after_write("goal_files", path)
+    return f"Goal {json.dumps(name, ensure_ascii=False)} stored."
+
+
+@mcp.tool(name=names.tool("drop_goal"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["drop_goal"])
+def drop_goal(name: str, reason: str) -> str:
+    """Appends the whole file and his reason to goals-archive.md, then removes the file."""
+    with _file_lock("goals"):
+        try:
+            path = goals_module.named_path(goals_module.folders(REPO)[0], name)
+            if not path.is_file():
+                raise goals_module.GoalError("No goal has that name.")
+            if not isinstance(reason, str) or not reason.strip():
+                raise goals_module.GoalError("Dropping a goal needs a reason.")
+            serving = goals_module.serving_projects(REPO, name)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("drop_goal", str(error))
+        _archive_goals_text(goals_module.text(path) + "\n\n" + reason)
+        path.unlink()
+        _recut_after_write("goal_files", path)
+    answer = f"Goal {json.dumps(name, ensure_ascii=False)} archived and removed."
+    if serving:
+        titles = ", ".join(json.dumps(title, ensure_ascii=False) for title in serving)
+        answer += (f' Open projects that named it under Serves: {titles}. '
+                   'Change one with serve_project(title="<title>", serves="<goal name or none>").')
+    return answer
+
+
+@mcp.tool(name=names.tool("open_project"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["open_project"])
+def open_project(title: str, target: str, next_step: str, serves: str = "none", steps: list[str] = []) -> str:
+    """Creates the project file."""
+    with _file_lock("goals"):
+        try:
+            path = goals_module.open_project(REPO, title, target, next_step, serves, steps)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("open_project", str(error))
+        _recut_after_write("projects", path)
+    return f"Project {json.dumps(title, ensure_ascii=False)} opened."
+
+
+@mcp.tool(name=names.tool("serve_project"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["serve_project"])
+def serve_project(title: str, serves: str) -> str:
+    """Replaces the Serves line of an open project with an existing goal name or none."""
+    with _file_lock("goals"):
+        try:
+            path = goals_module.serve_project(REPO, title, serves)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("serve_project", str(error))
+        _recut_after_write("projects", path)
+    return f"Project {json.dumps(title, ensure_ascii=False)} Serves updated."
+
+
+@mcp.tool(name=names.tool("advance_project"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["advance_project"])
+def advance_project(title: str, next_step: str, done_step: str = "", add_steps: list[str] = []) -> str:
+    """Replaces the Next step line; ticks done_step or appends it ticked; appends add_steps unticked."""
+    with _file_lock("goals"):
+        try:
+            path = goals_module.advance_project(REPO, title, next_step, done_step, add_steps)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("advance_project", str(error))
+        _recut_after_write("projects", path)
+    return f"Project {json.dumps(title, ensure_ascii=False)} advanced."
+
+
+@mcp.tool(name=names.tool("close_project"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["close_project"])
+def close_project(title: str, outcome: str, reason: str = "") -> str:
+    """Sets the status line and moves the file to closed; abandoned needs a reason."""
+    with _file_lock("goals"):
+        try:
+            wake = _load_budget().get("wake_count", 0) + 1
+            old, path = goals_module.close_project(REPO, title, outcome, reason, wake, _utc_now().strftime("%Y-%m-%d"))
+        except goals_module.GoalError as error:
+            return goals_module.refusal("close_project", str(error))
+        _recut_after_write("projects", path)
+        _recut_after_write("projects", old)
+    return f"Project {json.dumps(title, ensure_ascii=False)} closed as {outcome}."
+
+
+@mcp.tool(name=names.tool("read_goal"))
+def read_goal(name: str) -> str:
+    """One goal in full."""
+    with _file_lock("goals"):
+        try:
+            path = goals_module.named_path(goals_module.folders(REPO)[0], name)
+            if not path.is_file():
+                raise goals_module.GoalError("No goal has that name.")
+            return goals_module.text(path)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("read_goal", str(error))
+
+
+@mcp.tool(name=names.tool("read_project"))
+def read_project(title: str, closed_in: str = "") -> str:
+    """Returns the open project or latest closing; closed_in selects a closing by wake."""
+    with _file_lock("goals"):
+        try:
+            return goals_module.read_project(REPO, title, closed_in)
+        except goals_module.GoalError as error:
+            return goals_module.refusal("read_project", str(error))
+
+
+@mcp.tool(name=names.tool("set_ambition"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["set_ambition"])
+def set_ambition(text: str) -> str:
+    """Replaces the standing ambition's text under its heading, with a backup; refuses blank text or an unmoved old list."""
+    with _file_lock("goals"):
+        if not isinstance(text, str) or not text.strip():
+            return goals_module.refusal("set_ambition", "Text must be a non-blank string.")
+        path = REPO / names.rel("goals")
+        if path.is_file() and re.search(r"(?m)^## Now\r?$", goals_module.text(path)):
+            return goals_module.AMBITION_OLD_LIST_REFUSAL
+        # The heading at the top of the file is the file's, not his text: keep it,
+        # with its blank lines, unless he supplies a heading of his own.
+        heading = b""
+        if path.is_file() and not text.lstrip().startswith("#"):
+            kept = re.match(rb"\A(?:#[^\r\n]*\r?\n|[ \t]*\r?\n)+", path.read_bytes())
+            heading = kept.group(0) if kept else b""
+        written, _, _ = safe_replace_file(path, heading.decode("utf-8") + text, 0, 1.0, preserve_bytes=True)
+        if not written:
+            return goals_module.refusal("set_ambition", "The standing ambition was not replaced.")
+        _recut_after_write("goals", path)
+    return "Standing ambition updated."
+
+
 @mcp.tool(name=names.tool("update_goals"))
 @stop_marker.refuse_when_stopped(lambda: REPO)
 @_ignore_unknown_arguments
 def update_goals(new_text: str | None = None) -> str:
-    """Replace the goals document after guarding against accidental blanking."""
-    if new_text is None:
-        return (f'{names.tool("update_goals")} REFUSED: nothing was changed. It takes the whole of '
-                f'{names.rel("goals")} as one string. Call {names.tool("read_goals")}(), edit the text, '
-                f'then call {names.tool("update_goals")}(new_text="<the whole file>").')
+    """Replace goals.md after guarding against accidental blanking."""
     with _file_lock("goals"):
+        folder = goals_module.folders(REPO)[0]
+        if folder.is_dir() and any(path.is_file() for path in folder.iterdir()):
+            return goals_module.UPDATE_REFUSAL
+        if new_text is None:
+            return (f'{names.tool("update_goals")} REFUSED: nothing was changed. It takes the whole of '
+                    f'{names.rel("goals")} as one string. Call {names.tool("read_goals")}(), edit the text, '
+                    f'then call {names.tool("update_goals")}(new_text="<the whole file>").')
         goals_path = REPO / names.rel("goals")
         written, refusal, backup = safe_replace_file(goals_path, new_text, 200, 0.50)
         if not written:
@@ -1107,11 +1256,16 @@ def update_identity_evolving(new_evolving: str) -> str:
 @stop_marker.refuse_when_stopped(lambda: REPO)
 def archive_completed_goals(completed_text: str) -> str:
     """Append completed goals under a UTC timestamp heading."""
-    stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
-    archive_path = REPO / names.rel("goals_archive")
-    with archive_path.open("a", encoding="utf-8") as archive:
-        archive.write(f"\n## {stamp}\n\n{completed_text}\n")
+    with _file_lock("goals"):
+        _archive_goals_text(completed_text)
     return f"{names.rel('goals_archive')} updated"
+
+
+def _archive_goals_text(completed_text: str) -> None:
+    """Shared timestamp archive, with no newline conversion."""
+    stamp = _utc_now().strftime("%Y-%m-%d-%H%M%S")
+    with (REPO / names.rel("goals_archive")).open("ab") as archive:
+        archive.write(f"\n## {stamp}\n\n{completed_text}\n".encode("utf-8"))
 
 
 def _append_timestamped(path: Path, initial_text: str, text: str) -> None:
@@ -2770,6 +2924,8 @@ def update_works_index(new_text: str) -> str:
 
 
 def _help_group(name: str) -> str:
+    if re.search(r"goal|project|ambition", name):
+        return "Goals and projects"
     if re.search(r"wake|identity|governance|operator|stop", name):
         return "Waking"
     if re.search(r"mail|inbox|message|correspond|new_thread", name):
@@ -2830,6 +2986,10 @@ def help(tool: str | None = None, about: str | None = None) -> str:
             values = {"from_place_id": 195, "to_place_id": 196}
         if tool == names.tool("update_goals"):
             values = {"new_text": "<the whole file>"}
+        if tool == "close_project":
+            values["outcome"] = "completed"
+        if tool == "serve_project":
+            values["serves"] = "none"
         example = tool + "(" + ", ".join(name + "=" + repr(value) for name, value in values.items()) + ")"
         return found.description.strip() + "\n\nArguments:\n" + "\n".join(arguments) + "\nExample: " + example
     words = (about or "").casefold().split()

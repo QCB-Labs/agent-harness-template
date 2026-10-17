@@ -17,11 +17,11 @@ SYSTEM_FIELDS = frozenset(
     {"id", "tags", "created_at", "updated_at", "wake", "source", "channel", "weight", "origin", "role"}
 )
 LOGICAL_NAMES = (
-    "lessons", "city_rules", "open_threads", "goals", "journal", "residents"
+    "lessons", "city_rules", "open_threads", "goals", "journal", "residents", "goal_files", "projects"
 )
 VALID_KINDS = {
     "goal", "commitment", "thread", "rule", "reflection", "decision",
-    "relationship", "log", "handover",
+    "relationship", "log", "handover", "project",
 }
 
 
@@ -322,7 +322,10 @@ def _pieces_for(logical: str, text: str, path: Path, shapes: dict[str, Any] | No
     if logical == "open_threads":
         return _segments(text, re.compile(r"(?m)^- \*\*.+?\*\*[^\r\n]*"), logical, path)
     if logical == "goals":
-        return _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)"), logical, path)
+        marker = re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)")
+        if text and not marker.search(text):
+            return [(0, text)]
+        return _segments(text, marker, logical, path)
     if not text:
         if logical in {"journal", "residents"}:
             return [(0, text)]
@@ -452,6 +455,19 @@ def _heading_text(segment: str) -> str | None:
 def _prepare_pieces(logical: str, path: Path, text: str, relative: str,
                     patterns: dict[str, Any]) -> list[tuple[dict[str, Any], str, str | None, dict[str, Any], str | None]]:
     """One preparation path for fresh migration and keyed re-cutting."""
+    if logical in {"goal_files", "projects"}:
+        from tools import goals
+        supplied = {"text": text, "title": goals.title_of(text),
+                    "kind": "goal" if logical == "goal_files" else "project"}
+        origin = {"logical": logical, "file": relative, "position": 0,
+                  "order": 1, "key": path.stem, "file_tags": []}
+        if logical == "projects":
+            parts = goals.project_parts(text)
+            if parts["serves"] != "none":
+                origin["file_tags"] = ["goal:" + goals.slug(parts["serves"])]
+            if path.parent.name == "closed":
+                supplied["status"] = "done"
+        return [(supplied, "migration", None, origin, "current")]
     shapes = patterns.get("card_shapes", {})
     cfg = shapes.get(logical, {})
     keyed = logical in {"journal", "residents"}
@@ -531,6 +547,8 @@ def _source_files(root: Path, logical: str, relative: str, excluded: str | None)
     if target.is_file():
         return [target]
     if not target.is_dir():
+        if logical in {"goal_files", "projects"}:
+            return []
         raise MigrationFormatError(f"{logical}: configured path does not exist: {relative}")
     excluded_path = (root / excluded).resolve() if excluded else None
     return [
@@ -567,6 +585,8 @@ def migrate(
             continue
         files = _source_files(root, logical, relative, naming["indexes"].get(logical))
         if not files:
+            if logical in {"goal_files", "projects"}:
+                continue
             raise MigrationFormatError(f"{logical}: no source files under {relative}")
         for path in files:
             text = _read_source_text(path)
@@ -736,7 +756,7 @@ def recall(
     allowed = set(kinds) if kinds else None
     matches = [
         card for card in state.values()
-        if card.get("status") in {"live", "recheck"}
+        if (card.get("status") in {"live", "recheck"} or (history and card["kind"] == "project" and card.get("status") == "done"))
         and (not wanted or wanted.intersection(card.get("tags", [])))
         and (allowed is None or card["kind"] in allowed)
         and (needle is None or needle in ((card.get("title") or "") + "\n" + card["text"]).lower())
@@ -854,8 +874,46 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
         ],
         key=lambda card: card["origin"]["order"],
     )
-    source_text = _read_source_text(path)
+    source_text = _read_source_text(path) if path.is_file() else ""
     result = {"changed": [], "new": [], "removed": [], "unchanged": []}
+    if logical in {"goal_files", "projects"}:
+        if not path.is_file():
+            for old in existing:
+                store.append_version(old, status="done", status_reason="removed from source file")
+                result["removed"].append(old["id"])
+            return result
+        supplied, wake, created_at, origin, role = _prepare_pieces(logical, path, source_text, relative, store.patterns)[0]
+        # Closed filenames are independent keys, including legacy slug-only names.
+        old = next((c for c in state.values()
+                    if (c.get("origin") or {}).get("logical") == logical
+                    and (c.get("origin") or {}).get("key") == origin["key"]
+                    and (c.get("origin") or {}).get("file") == relative), None)
+        if old is None and logical == "projects" and path.parent.name == "closed":
+            from tools.goals import slug
+            opened = path.parent.parent / (slug(supplied["title"]) + ".md")
+            # Transfer this closing's open card; the next opening gets a new card.
+            if not opened.exists():
+                open_relative = opened.relative_to(root).as_posix()
+                old = next((c for c in state.values()
+                            if (c.get("origin") or {}).get("logical") == logical
+                            and (c.get("origin") or {}).get("file") == open_relative
+                            and c.get("status") == "live"
+                            and c.get("title") == supplied["title"]), None)
+        if old is None:
+            card = store.write(supplied, wake=wake, source="self", channel="migration",
+                               origin=origin, created_at=created_at, role=role)
+            result["new"].append(card["id"])
+        else:
+            changes = dict(text=supplied["text"], title=supplied["title"],
+                           status=supplied.get("status", "live"), origin=origin)
+            if old.get("status_reason") == "removed from source file":
+                changes["status_reason"] = None
+            if all(old.get(k) == v for k, v in changes.items()) and old.get("role") == role:
+                result["unchanged"].append(old["id"])
+            else:
+                store.append_version(old, role=role, **changes)
+                result["changed"].append(old["id"])
+        return result
     full_prepared = _prepare_pieces(logical, path, source_text, relative, store.patterns)
     if logical in {"journal", "residents"}:
         active = [c for c in existing if c.get("status_reason") != "re-cut into keyed pieces"]
@@ -963,6 +1021,8 @@ def recut_all(repo_root: Path, naming_path: Path, patterns_path: Path, logical: 
     if logical not in LOGICAL_NAMES:
         raise CardError(f"invalid logical name: {logical!r}")
     naming = load_naming(naming_path)
+    if logical not in naming["paths"]:
+        return {"files": 0, "made": 0, "closed": 0, "changed": 0, "left_alone": 0}
     files = _source_files(Path(repo_root), logical, naming["paths"][logical], naming["indexes"].get(logical))
     counts = {"files": 0, "made": 0, "closed": 0, "changed": 0, "left_alone": 0}
     for path in files:
@@ -970,6 +1030,17 @@ def recut_all(repo_root: Path, naming_path: Path, patterns_path: Path, logical: 
         counts["files"] += 1
         for output, key in (("made", "new"), ("closed", "removed"), ("changed", "changed"), ("left_alone", "unchanged")):
             counts[output] += len(result[key])
+    if logical in {"goal_files", "projects"}:
+        raw = json.loads(Path(naming_path).read_bytes())
+        memory = Path(repo_root) / raw.get("dirs", {}).get("memory", "memory")
+        store = CardStore(memory, patterns_path)
+        missing_files = {(c.get("origin") or {}).get("file") for c in store._current_state().values()
+                         if (c.get("origin") or {}).get("logical") == logical
+                         and c.get("status_reason") != "removed from source file"
+                         and not (Path(repo_root) / c["origin"]["file"]).is_file()}
+        for missing in sorted(missing_files):
+            result = recut_file(repo_root, naming_path, patterns_path, logical, Path(repo_root) / missing)
+            counts["closed"] += len(result["removed"])
     return counts
 
 
@@ -1132,7 +1203,12 @@ def read_wake_card(
                 fallback = dict(newest)
                 fallback["text"] = _plan_section(fallback["text"], plan_heading)
             doing.append(fallback)
-    doing.extend(c for c in cards if c["kind"] == "goal" and c["status"] == "live")
+    goal_cards = [c for c in cards if c["kind"] == "goal" and c["status"] == "live"]
+    # Legacy goals.md cards retain their cutter and precede the separate files.
+    doing.extend(c for c in goal_cards if (c.get("origin") or {}).get("logical") != "goal_files")
+    doing.extend(_file_order([c for c in goal_cards if (c.get("origin") or {}).get("logical") == "goal_files"]))
+    project_cards = _file_order([c for c in cards if c["kind"] == "project" and c["status"] == "live"])
+    doing.extend(project_cards)
     owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])
     if due_card is not None:
         owing.insert(0, due_card)
@@ -1172,6 +1248,46 @@ def read_wake_card(
                 section["text"] += note
                 section["bytes"] = _utf8_bytes(section["text"])
             return section
+        if name == "What I was doing" and project_cards:
+            from tools.goals import project_parts
+            # Reserve every title/next-step pair before choosing any full project.
+            def summary(card):
+                parts = project_parts(card["text"])
+                return "# " + parts["title"] + "\n\n## Next step\n\n" + parts["next_step"]
+            projects = [c for c in candidates if c["kind"] == "project"]
+            other = [c for c in candidates if c["kind"] != "project"]
+            protected = [c for c in other if c is log_bundle]
+            summaries = [summary(c) for c in projects]
+            reserve = _utf8_bytes("\n\n".join(summaries))
+            used_other = list(other)
+            def render_other(chosen):
+                body = "\n\n".join(c["text"] for c in chosen)
+                left = len(other) - len(chosen)
+                if left:
+                    body += f"\n\n{left} more card(s) left out. Use recall with narrower tags or kinds."
+                return body
+            # Project summaries are never discarded by section or whole-card fitting.
+            allowed = len(other) if max_cards is None else max(0, max_cards - len(projects))
+            while used_other and (len(used_other) > allowed or
+                    _utf8_bytes(render_other(used_other)) + (2 if used_other else 0) + reserve > budget):
+                removable = [c for c in used_other if c not in protected]
+                if not removable:
+                    break
+                used_other.remove(removable[-1])
+            body = render_other(used_other)
+            if _utf8_bytes(body) + (2 if body else 0) + reserve > budget:
+                raise CardError("what_i_was_doing is too small for the newest log and all project titles and next steps.")
+            entries = list(summaries)
+            if max_cards is None:
+                for i, card in enumerate(projects):
+                    trial = list(entries)
+                    trial[i] = card["text"]
+                    candidate = "\n\n".join(([body] if body else []) + trial)
+                    if _utf8_bytes(candidate) <= budget:
+                        entries = trial
+            body = "\n\n".join(([body] if body else []) + entries)
+            return {"name": name, "text": body, "bytes": _utf8_bytes(body),
+                    "shown": len(used_other) + len(projects), "left_out": len(other) - len(used_other)}
         protected = [c for c in candidates if c is log_bundle or c is due_card]
         if protected:
             rest, _ = _fit_cards([c for c in candidates if c not in protected], max(0, budget - sum(_utf8_bytes(c["text"]) for c in protected)))
@@ -1195,8 +1311,12 @@ def read_wake_card(
     rendered = render()
     limit = int(config["wake_card_bytes"])
     dropped = 0
+    if project_cards and _utf8_bytes(rendered) > limit:
+        sections[1] = build_section(*groups[0], max_cards=sections[1]["shown"])
+        rendered = render()
     for index in range(len(groups), 0, -1):
-        protected_count = sum(c is log_bundle or c is due_card for c in groups[index - 1][1])
+        protected_count = sum(c is log_bundle or c is due_card or c["kind"] == "project"
+                              for c in groups[index - 1][1])
         while _utf8_bytes(rendered) > limit and sections[index]["shown"] > protected_count:
             sections[index] = build_section(*groups[index - 1], max_cards=sections[index]["shown"] - 1)
             dropped += 1

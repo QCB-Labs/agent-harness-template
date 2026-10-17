@@ -19,7 +19,9 @@
     "wishlist": "{memory}/requisitions.md",
     "wishlist_archive": "{memory}/requisitions-archive.md",
     "open_threads": "{memory}/open-matters.md",
-    "city_rules": "{memory}/city-regulations.md"
+    "city_rules": "{memory}/city-regulations.md",
+    "goal_files": "{memory}/goals",
+    "projects": "{memory}/projects"
   },
   "headings": {
     "identity": "# PERSONNEL FILE",
@@ -62,7 +64,16 @@
     "stage_draft": "submit_for_approval",
     "read_drafts": "read_pending_approval",
     "archive_draft": "archive_submission",
-    "notify_crash": "file_incident_report"
+    "notify_crash": "file_incident_report",
+    "set_goal": "set_goal",
+    "drop_goal": "drop_goal",
+    "open_project": "open_project",
+    "serve_project": "serve_project",
+    "advance_project": "advance_project",
+    "close_project": "close_project",
+    "read_goal": "read_goal",
+    "read_project": "read_project",
+    "set_ambition": "set_ambition"
   },
   "wake_id": {
     "prefix": "SR-",

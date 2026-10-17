@@ -89,9 +89,10 @@ def test_simple_reader_returns_full_utf8_content(
 ) -> None:
     path = isolated_repo / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(expected, encoding="utf-8")
+    path.write_bytes(expected.encode("utf-8"))
 
-    assert reader() == expected
+    answer = expected + "\n\nClosed projects: 0." if reader is harness_mcp.read_goals else expected
+    assert reader() == answer
 
 
 @pytest.mark.parametrize(
@@ -933,6 +934,15 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("write_journal"),
         names.tool("recover_unrecorded"),
         names.tool("file_unrecorded"),
+        names.tool("set_goal"),
+        names.tool("drop_goal"),
+        names.tool("open_project"),
+        names.tool("serve_project"),
+        names.tool("advance_project"),
+        names.tool("close_project"),
+        names.tool("read_goal"),
+        names.tool("read_project"),
+        names.tool("set_ambition"),
         names.tool("update_goals"),
         names.tool("update_identity_evolving"),
         names.tool("archive_completed_goals"),
@@ -1012,6 +1022,15 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("write_journal"),
         names.tool("recover_unrecorded"),
         names.tool("file_unrecorded"),
+        names.tool("set_goal"),
+        names.tool("drop_goal"),
+        names.tool("open_project"),
+        names.tool("serve_project"),
+        names.tool("advance_project"),
+        names.tool("close_project"),
+        names.tool("read_goal"),
+        names.tool("read_project"),
+        names.tool("set_ambition"),
         names.tool("update_goals"),
         names.tool("update_identity_evolving"),
         names.tool("archive_completed_goals"),
@@ -1054,7 +1073,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py", "cards.py", "stop_marker.py"):
+                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
     (tools_dir / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "agent-profile.json", tmp_path / "agent-profile.json")
@@ -1582,7 +1601,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 58
+    assert len(tools) == 67
 
 
 

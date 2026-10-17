@@ -22,7 +22,7 @@ WRITES = {
         'update_identity_evolving','archive_completed_goals','append_lesson','append_wishlist','propose_city_rule',
         'write_operator_message','authorise_spend','update_map','upsert_resident',
         'notify_crash','update_almanac','record_place','stage_draft','archive_draft','update_open_threads',
-        'upsert_work','update_works_index'},
+        'upsert_work','update_works_index','set_goal','drop_goal','open_project','advance_project','close_project','serve_project','set_ambition'},
     square: {'post_dispatch','post_comment','vote_post','bind_signing_key'},
     market: {'acquire_free_artifact','purchase_listing','pay_listing_fee','create_world_draft',
         'cancel_world_draft','activate_world_listing','create_listing','write_store_line','withdraw_listing'},
@@ -215,7 +215,10 @@ def test_all_local_writers_refuse_before_dependencies(repo, monkeypatch, module,
     arguments = {key: None for key, p in inspect.signature(function).parameters.items()
                  if p.default is inspect.Parameter.empty}
     result = function(**arguments)
-    assert result == (dict(error='STOP_MARKER', message=stop.REFUSAL) if isinstance(result, dict) else stop.REFUSAL)
+    expected = stop.REFUSAL
+    if module is h and name in h.goals_module.CALLS:
+        expected = h.goals_module.refusal(name, "STOP.md is set.")
+    assert result == (dict(error='STOP_MARKER', message=expected) if isinstance(result, dict) else expected)
     assert snapshot(repo) == before
 
 
