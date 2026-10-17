@@ -10,12 +10,12 @@ import sys
 
 import pytest
 
-from tools import harness_mcp as h, square_mcp as square, market_mcp as market
+from tools import harness_mcp as h
 from tools import authority, names as scheme, phase, stop_marker as stop, stop_check, lift_stop
 
 NOW = datetime.datetime(2026, 10, 4, 12, tzinfo=datetime.timezone.utc)
 CID = "11111111-1111-4111-8111-111111111111"
-MODULES = (h, square, market)
+MODULES = (h,)
 WRITES = {
     h: {'check_inbox','reply_to_message','send_new_thread','request_new_correspondent',
         'commit_wake', 'update_last_seen','file_unrecorded','update_goals',
@@ -23,9 +23,6 @@ WRITES = {
         'write_operator_message','authorise_spend','update_map','upsert_resident',
         'notify_crash','update_almanac','record_place','stage_draft','archive_draft','update_open_threads',
         'upsert_work','update_works_index','set_goal','drop_goal','open_project','advance_project','close_project','serve_project','set_ambition','open_thread','update_thread','close_thread'},
-    square: {'post_dispatch','post_comment','vote_post','bind_signing_key'},
-    market: {'acquire_free_artifact','purchase_listing','pay_listing_fee','create_world_draft',
-        'cancel_world_draft','activate_world_listing','create_listing','write_store_line','withdraw_listing'},
 }
 WRITE_CASES = [(m, name) for m, names in WRITES.items() for name in sorted(names)]
 
@@ -41,7 +38,7 @@ def repo(tmp_path, monkeypatch):
     (tmp_path / 'tools/harness_mcp.py').write_text('# invented harness\n', encoding='utf-8')
     (tmp_path / 'GEMINI.md').write_text('# invented root\n', encoding='utf-8')
     (tmp_path / 'STOP_LOG.md').write_text(stop.LOG_HEADER, encoding='utf-8')
-    for module, name in ((h, 'REPO'), (square, 'REPO_ROOT'), (market, 'REPO_ROOT')):
+    for module, name in ((h, 'REPO'),):
         monkeypatch.setattr(module, name, tmp_path)
     monkeypatch.setattr(h, '_utc_now', lambda: NOW)
     monkeypatch.setattr(h, '_send_email', lambda **kwargs: False)
@@ -208,8 +205,6 @@ def test_all_local_writers_refuse_before_dependencies(repo, monkeypatch, module,
     monkeypatch.setattr(phase, 'current', fail)
     monkeypatch.setattr(phase, '_record_private_use', fail)
     monkeypatch.setattr(h, '_send_email', fail)
-    monkeypatch.setattr(square, '_square_request', fail)
-    monkeypatch.setattr(market, '_market_request', fail)
     before = snapshot(repo)
     function = getattr(module, name)
     arguments = {key: None for key, p in inspect.signature(function).parameters.items()
@@ -258,18 +253,9 @@ def test_read_tools_work_under_marker(repo, reader):
     assert function() == before
 
 
-def test_square_market_reads_work_under_marker(repo, monkeypatch):
-    monkeypatch.setattr(square, '_square_request', lambda *a, **kw: {'posts': []})
-    monkeypatch.setattr(market, '_market_request', lambda *a, **kw: {'listings': []})
-    before = (square.read_front_page(), market.browse_shelves())
-    raise_marker(repo)
-    assert (square.read_front_page(), market.browse_shelves()) == before
-
-
 def test_unreadable_marker_check_refuses_writers(repo, monkeypatch):
     monkeypatch.setattr(stop, 'marker_present', lambda *args: (_ for _ in ()).throw(PermissionError()))
     assert h.append_lesson(text='sample') == stop.CHECK_FAILURE
-    assert square.vote_post(post_id=1)['message'] == stop.CHECK_FAILURE
 
 
 def test_wake_status_honours_once_per_conversation_and_still_reads_when_dependencies_broken(repo, monkeypatch):
@@ -452,20 +438,6 @@ def test_removal_notice_unreadable_refuses_status(repo):
     path.parent.mkdir(parents=True)
     path.write_text('{broken')
     assert h.wake_status(_conversationId=CID) == 'STOP.md or its record could not be read.'
-
-
-def test_stopped_signing_key_read_never_initializes_key(repo, monkeypatch):
-    raise_marker(repo)
-    monkeypatch.setattr(square.keys, 'get_or_create_square_key', fail)
-    before = snapshot(repo)
-    assert square.read_signing_key()['status'] == 'NOT_FOUND'
-    assert snapshot(repo) == before
-    key = repo / scheme.memory('private', 'keys') / 'square_ed25519.json'
-    key.parent.mkdir(parents=True)
-    key.write_text(json.dumps({'public_key':'invented-public', 'private_key_raw':'invented-private'}))
-    before = snapshot(repo)
-    assert square.read_signing_key()['public_key'] == 'invented-public'
-    assert snapshot(repo) == before
 
 
 def test_stopped_card_read_does_not_bootstrap_or_log_recall(repo, monkeypatch):

@@ -27,10 +27,6 @@ KNOWN_GAPS: set[int] = set()
 # runway: (file, the number, the exact words after it). Only these exact
 # references are skipped; any other step number in the same file is checked.
 OWN_STEPS = {
-    ("tools/market_mcp.py", 1, "of the 3-step World Aisle listing flow"):
-        "World Aisle listing, step 1 of its own three",
-    ("tools/market_mcp.py", 3, "of the World Aisle listing flow"):
-        "World Aisle listing, step 3 of its own three",
     ("tools/goals.py", 1, "applied:"): "read_goals' own shortening steps",
     ("tools/goals.py", 2, "applied:"): "read_goals' own shortening steps",
     ("tools/goals.py", 3, "applied:"): "read_goals' own shortening steps",
@@ -235,9 +231,9 @@ def test_every_exemption_is_used_and_has_a_reason():
 
 def test_an_exempted_phrase_with_a_different_number_is_checked():
     main = parse(_protocol())["main"]
-    text = "Step 999 of the World Aisle listing flow:"
-    assert tool_references("tools/market_mcp.py", main, text) == \
-        ["tools/market_mcp.py:1: Step 999 does not exist"]
+    text = "Step 999 applied:"
+    assert tool_references("tools/goals.py", main, text) == \
+        ["tools/goals.py:1: Step 999 does not exist"]
 
 
 def test_lowercase_in_tool_text_is_checked():
@@ -248,9 +244,9 @@ def test_lowercase_in_tool_text_is_checked():
 
 def test_a_wrong_wake_reference_fails_even_in_an_exempted_file():
     main = parse(_protocol())["main"]
-    text = "Step 1 of the 3-step World Aisle listing flow:\nNow go to Step 999."
-    found = tool_references("tools/market_mcp.py", main, text)
-    assert found == ["tools/market_mcp.py:2: Step 999 does not exist"]
+    text = "Step 1 applied:\nNow go to Step 999."
+    found = tool_references("tools/goals.py", main, text)
+    assert found == ["tools/goals.py:2: Step 999 does not exist"]
 
 
 def test_real_gate_on_the_sequence_line_is_checked():

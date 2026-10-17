@@ -32,8 +32,6 @@ REPO = Path(__file__).resolve().parent.parent
 
 SERVERS = [
     REPO / "tools" / "harness_mcp.py",
-    REPO / "tools" / "square_mcp.py",
-    REPO / "tools" / "market_mcp.py",
 ]
 
 FORBIDDEN_TOOL_NAMES = {

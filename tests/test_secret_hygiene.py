@@ -94,8 +94,6 @@ def test_example_templates_exist_and_are_safe() -> None:
     assert secrets_example.exists(), "tools/secrets.example.py must exist"
     secrets_text = secrets_example.read_text(encoding="utf-8")
     assert "CITY_TOKEN" in secrets_text
-    assert "SQUARE_TOKEN" in secrets_text
-    assert "MARKET_TOKEN" in secrets_text
     assert "your_secret_here" in secrets_text
     for pattern in SECRET_PATTERNS:
         assert not pattern.search(secrets_text), "tools/secrets.example.py contains live secrets!"
@@ -116,8 +114,8 @@ def test_example_templates_exist_and_are_safe() -> None:
     servers = mcp_data.get("mcpServers", {})
     assert "harness" in servers
     assert "city" in servers
-    assert "square" in servers
-    assert "market" in servers
+    assert "square" not in servers
+    assert "market" not in servers
     for pattern in SECRET_PATTERNS:
         assert not pattern.search(mcp_example.read_text(encoding="utf-8")), ".agents/mcp_config.example.json contains live secrets!"
 

@@ -6,8 +6,6 @@
 
 # --- Platform tokens ---
 CITY_TOKEN = "1f3d9_sk_your_secret_here"      # or env AGENT_CITY_TOKEN
-SQUARE_TOKEN = "1f916_sk_your_secret_here"    # optional; or env AGENT_SQUARE_TOKEN
-MARKET_TOKEN = "1f3ea_sk_your_secret_here"    # optional; or env AGENT_MARKET_TOKEN
 
 # --- Optional: the agent's own mailbox (reads and replies to its mail) ---
 # A dedicated Gmail account for the agent, with a 16-character APP PASSWORD

@@ -1,4 +1,4 @@
-"""Credential resolution for the agent ecosystem connectors (Square, Market, City).
+"""Credential resolution for the agent ecosystem City connector and agent mailbox.
 
 Prioritizes environment variables, then falls back to gitignored secrets.py,
 and returns an empty string if no token is configured.
@@ -33,48 +33,6 @@ def _load_secrets_module() -> object | None:
             except Exception:
                 continue
     return None
-
-
-def get_square_token() -> str:
-    """Return the Square (1F916) bearer token, or empty string if not configured.
-
-    Checks:
-    1. AGENT_SQUARE_TOKEN environment variable
-    2. SQUARE_TOKEN environment variable
-    3. SQUARE_TOKEN from secrets.py
-    """
-    env_token = os.environ.get("AGENT_SQUARE_TOKEN") or os.environ.get("SQUARE_TOKEN")
-    if env_token:
-        return env_token.strip()
-
-    secrets = _load_secrets_module()
-    if secrets is not None:
-        token = getattr(secrets, "SQUARE_TOKEN", "")
-        if isinstance(token, str):
-            return token.strip()
-
-    return ""
-
-
-def get_market_token() -> str:
-    """Return the Market (1F3EA) bearer token, or empty string if not configured.
-
-    Checks:
-    1. AGENT_MARKET_TOKEN environment variable
-    2. MARKET_TOKEN environment variable
-    3. MARKET_TOKEN from secrets.py
-    """
-    env_token = os.environ.get("AGENT_MARKET_TOKEN") or os.environ.get("MARKET_TOKEN")
-    if env_token:
-        return env_token.strip()
-
-    secrets = _load_secrets_module()
-    if secrets is not None:
-        token = getattr(secrets, "MARKET_TOKEN", "")
-        if isinstance(token, str):
-            return token.strip()
-
-    return ""
 
 
 def get_city_token() -> str:
@@ -119,16 +77,6 @@ def mask_token(token: str | None) -> str:
         return f"{clean[:8]}...{clean[-4:]}"
 
     return f"{clean[:3]}...{clean[-2:]}"
-
-
-def has_square_access() -> bool:
-    """Return True if Square token is present."""
-    return bool(get_square_token())
-
-
-def has_market_access() -> bool:
-    """Return True if Market token is present."""
-    return bool(get_market_token())
 
 
 def has_city_access() -> bool:

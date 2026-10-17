@@ -11,11 +11,11 @@ from pathlib import Path
 
 import pytest
 
-from tools import harness_mcp, market_mcp, square_mcp
+from tools import harness_mcp
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVERS = {"harness": harness_mcp, "market": market_mcp, "square": square_mcp}
-MESSAGE_SOURCES = ["tools/harness_mcp.py", "tools/market_mcp.py", "tools/square_mcp.py", "tools/cards.py", "tools/goals.py", "tools/threads.py", "tools/commit.py", "tools/casefiles.py", "tools/verdicts.py"]
+SERVERS = {"harness": harness_mcp}
+MESSAGE_SOURCES = ["tools/harness_mcp.py", "tools/cards.py", "tools/goals.py", "tools/threads.py", "tools/commit.py", "tools/casefiles.py", "tools/verdicts.py"]
 
 
 def _registry() -> dict[str, dict[str, dict[str, set[str]]]]:
@@ -32,11 +32,10 @@ def _registry() -> dict[str, dict[str, dict[str, set[str]]]]:
 
 
 REGISTRY = _registry()
-# Harness last: where a name is shared (read_thread is on the Square too), a
-# harness tool's own messages mean the harness tool.
+# Validate messages against the local server registry.
 ANY_TOOL = {
     name: spec
-    for prefix in ("market", "square", "harness")
+    for prefix in REGISTRY
     for name, spec in REGISTRY[prefix].items()
 }
 
@@ -79,7 +78,9 @@ def _protocol_calls() -> list[tuple[int, str, str, str]]:
     calls = []
     for number, line in enumerate((ROOT / "GEMINI.md").read_text(encoding="utf-8").splitlines(), start=1):
         for match in re.finditer(r"\b(harness|market|square)\.([a-z_]+)(?:\(([^()]*)\))?", line):
-            calls.append((number, match.group(1), match.group(2), match.group(3)))
+            # Square and Market are external servers, like the city.
+            if match.group(1) in REGISTRY:
+                calls.append((number, match.group(1), match.group(2), match.group(3)))
     return calls
 
 
