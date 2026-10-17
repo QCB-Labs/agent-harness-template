@@ -161,7 +161,7 @@ def test_a_note_without_an_impression_adds_no_row(repo, cases):
     assert not (cases / WIRE_FLAGS).exists()
 
 
-def test_flight_log_rows_go_to_the_place_casefile(repo, cases):
+def test_site_inspection_rows_go_to_the_place_casefile(repo, cases):
     harness.record_place(place_id=9001, slug="made-up-room", physical_description="One room.",
                               impression="An accurate and verified feed.")
     (row,) = _rows(cases / "place-9001.flags.md")

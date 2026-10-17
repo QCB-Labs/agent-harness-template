@@ -265,7 +265,7 @@ def test_an_attributed_note_is_not_marked(repo):
     assert "Flagged" not in answer
 
 
-def test_flight_log_stores_the_mark_and_says_so(repo, monkeypatch):
+def test_site_inspection_stores_the_mark_and_says_so(repo, monkeypatch):
     monkeypatch.setattr(harness, "update_map", lambda entries: None)
     answer = harness.record_place(place_id=9001, slug="made-up-room", physical_description="One room.",
                                        impression="An accurate and verified feed.")
@@ -320,7 +320,7 @@ def test_unusable_words_preserve_existing_flags(repo, content):
 
 
 @pytest.mark.parametrize("failure", [RuntimeError, RecursionError, MemoryError])
-def test_airlock_failure_still_saves_dossier_and_flight_log(repo, monkeypatch, failure):
+def test_airlock_failure_still_saves_case_file_and_site_inspection(repo, monkeypatch, failure):
     def fail(*args, **kwargs):
         raise failure("made-up failure")
     monkeypatch.setattr(verdicts, "mark", fail)
@@ -445,7 +445,7 @@ def test_draft_phrase_cannot_break_the_header(repo):
     assert rest == "\n\n# Draft Content\n\n" + body + "\n"
 
 
-def test_flagged_impression_adds_no_mission_log_footer_or_flag_files(repo, monkeypatch):
+def test_flagged_impression_adds_no_shift_report_footer_or_flag_files(repo, monkeypatch):
     from tools import driver_record
     monkeypatch.setattr(driver_record, "footer", lambda root: "")
     harness.upsert_resident(handle="made-up-wire", impression="A neutral newsroom.")

@@ -315,7 +315,10 @@ def rename(repo: Path, target_path: Path, assume_yes: bool = False, skip_tests: 
                 write(path, new_text)
         rewrite_headings(repo, current, target)
         scheme_out = {"scheme": target["scheme"], **{k: target[k] for k in PLAIN}}
-        write(repo / "naming.json", json.dumps(scheme_out, indent=2) + "\n")
+        # Keep naming.json's own line endings: a Windows checkout may hold CRLF.
+        eol = "\r\n" if "\r\n" in read(repo / "naming.json") else "\n"
+        text = json.dumps(scheme_out, indent=2) + "\n"
+        write(repo / "naming.json", text.replace("\n", eol))
         if not skip_tests and not run_tests(repo):
             raise RenameRefused("the tests failed after renaming")
     except Exception as error:
