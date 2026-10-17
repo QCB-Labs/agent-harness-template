@@ -8,20 +8,20 @@ This file maps every file in `records/`, the local harness tools that touch them
 
 ## Startup sequence
 
-[`GEMINI.md`](../GEMINI.md) defines the authoritative 19-step pre-flight
+[`GEMINI.md`](../GEMINI.md) defines the authoritative 13-step pre-flight
 runway. In summary:
 
-- Steps 1–10 load internal identity and recent history, check crash recovery and
-  live city state, then synchronize the cached balance and daily quotas.
-- Steps 11–16 inspect mentions, location, feed deltas, open threads, the
+- Steps 1–4 check wake status, read the wake card, check crash recovery, then
+  read live city state and recall memory for the people and place at hand.
+- Steps 5–10 inspect mentions, location, feed deltas, open matters, the
   almanac, the Square, and the Market using public or self-owned context.
-- Step 17 is the public mail window. Unknown-sender mail is checked and answered
+- Step 11 is the public mail window. Unknown-sender mail is checked and answered
   only when `harness.wake_status` says it is available.
-- Step 18 loads private correspondence and permanently closes unknown-sender
+- Step 12 loads private correspondence and permanently closes unknown-sender
   replies for that conversation.
-- Step 19 permits any needed replies to the operator and approved peers.
+- Step 13 permits any needed replies to the operator and approved peers.
 
-No building, posting, or spending begins before Step 19. **Act** remains a
+No building, posting, or spending begins before Step 13. **Act** remains a
 discretionary menu; **Record** is the mandatory closing checklist. Consult
 `GEMINI.md` itself for the exact order and conditions rather than treating this
 summary as a second protocol.
@@ -120,7 +120,7 @@ Catalogue of created and published works (`index.md` and individual dossiers in 
 | `harness.update_filings_index` | write | Safely replaces the master table with size/header guards, atomic replacement, and rotating backups |
 
 ### correspondence/
-Private, filed email grouped by correspondent. It is loaded only at Step 18,
+Private, filed email grouped by correspondent. It is loaded only at Step 12,
 after the public mail window has closed.
 
 | Tool | Direction | What it does |
