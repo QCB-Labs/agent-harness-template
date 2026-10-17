@@ -2722,13 +2722,19 @@ def _log_blocked_draft(kinds: list[str], body: str) -> None:
 def stage_draft(
     slug: str,
     target_type: str,
-    target_place_id: int,
     body: str,
+    target_place_id: int | None = None,
+    site: str = "city",
     addressed_to: str | None = None,
     attribution_sources: list[str] | None = None,
     conversation_id: HostConversationId = None,
 ) -> dict[str, object]:
-    """Stage draft text with checks before publication."""
+    """Stage draft text with checks before publication.
+
+    site is where it will be posted: "city" (the default) needs target_place_id
+    and is checked against the city's limits; any other site (such as "square")
+    gets the same safety checks, and its limits are in that site's own facts.
+    """
     drafts_dir = REPO / names.dir_name("drafts")
     drafts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -2739,6 +2745,14 @@ def stage_draft(
     if not re.fullmatch(r"[a-z][a-z_]{0,31}", str(target_type)):
         return {"status": "REFUSED", "reason": "target_type must be a plain word, such as note."}
 
+    if not re.fullmatch(r"[a-z][a-z0-9_]{0,31}", str(site)):
+        return {"status": "REFUSED", "reason": "site must be a plain word, such as city or square."}
+    in_city = site == "city"
+    if in_city and target_place_id is None:
+        return {"status": "REFUSED",
+                "reason": 'A city draft needs target_place_id, the place it will be posted in. '
+                          'For another site, pass site, e.g. site="square".'}
+
     draft_file = drafts_dir / f"{clean_slug}.md"
 
     body_utf8 = body.encode("utf-8")
@@ -2746,8 +2760,7 @@ def stage_draft(
     char_count = len(body)
     line_count = len(body.splitlines())
 
-    almanac = _load_almanac()
-    place_known = str(target_place_id) in almanac.get("places", {})
+    place_known = in_city and str(target_place_id) in _load_almanac().get("places", {})
 
     CITY_BYTE_LIMIT = 655360      # 640 KB server ceiling
     RECOMMENDED_NOTE_LIMIT = 1000  # ergonomic readability window
@@ -2782,20 +2795,25 @@ def stage_draft(
     blocked_yaml = ("cleared_to_post: false\nblocked_kinds:\n"
                     + "\n".join(f'  - "{k}"' for k in refused_kinds) + "\n") if refused_kinds else ""
     now_iso = _utc_now().isoformat()
+    if in_city:
+        place_yaml = f"target_place_id: {target_place_id}\n"
+        limits_yaml = (f"city_limit_bytes: {CITY_BYTE_LIMIT}\n"
+                       f"within_limits: {str(utf8_bytes <= CITY_BYTE_LIMIT).lower()}\n"
+                       f"within_recommended_window: {str(utf8_bytes <= RECOMMENDED_NOTE_LIMIT).lower()}\n"
+                       f"target_place_known: {str(place_known).lower()}\n")
+    else:
+        place_yaml = ""
+        limits_yaml = "site_limits: in that site's own official facts\n"
     content = f"""---
 slug: {clean_slug}
+site: {site}
 target_type: {target_type}
-target_place_id: {target_place_id}
-{addr_yaml}staged_at: "{now_iso}"
+{place_yaml}{addr_yaml}staged_at: "{now_iso}"
 utf8_bytes: {utf8_bytes}
 characters: {char_count}
 lines: {line_count}
 reliability_verdicts: {reliability_yaml}
-city_limit_bytes: {CITY_BYTE_LIMIT}
-within_limits: {str(utf8_bytes <= CITY_BYTE_LIMIT).lower()}
-within_recommended_window: {str(utf8_bytes <= RECOMMENDED_NOTE_LIMIT).lower()}
-target_place_known: {str(place_known).lower()}
-attribution_sources:
+{limits_yaml}attribution_sources:
 {sources_yaml}
 {outgoing_check_yaml}{blocked_yaml}---
 
@@ -2817,26 +2835,30 @@ attribution_sources:
                        f"cleared to post. {_blocked_advice(refused_kinds)}",
         }
 
-    return {
+    metrics: dict[str, object] = {
+        "utf8_bytes": utf8_bytes,
+        "characters": char_count,
+        "lines": line_count,
+    }
+    if in_city:
+        metrics["within_city_limit"] = utf8_bytes <= CITY_BYTE_LIMIT
+        metrics["within_recommended_window"] = utf8_bytes <= RECOMMENDED_NOTE_LIMIT
+    else:
+        metrics["site_limits"] = f"Check {site}'s own official facts for its length limits."
+    metrics["outgoing_check"] = outgoing_check_metric
+    # Reliability verdicts remain advisory: they never stop a draft.
+    metrics["reliability_verdicts"] = draft_verdicts
+    result: dict[str, object] = {
         "status": "STAGED",
         **reliability_check,
         "file": f"{names.dir_name('drafts')}/{clean_slug}.md",
-        "metrics": {
-            "utf8_bytes": utf8_bytes,
-            "characters": char_count,
-            "lines": line_count,
-            "within_city_limit": utf8_bytes <= CITY_BYTE_LIMIT,
-            "within_recommended_window": utf8_bytes <= RECOMMENDED_NOTE_LIMIT,
-            "outgoing_check": outgoing_check_metric,
-            # Reliability verdicts remain advisory: they never stop a draft.
-            "reliability_verdicts": draft_verdicts,
-        },
-        "target_place": {
-            "id": target_place_id,
-            "known_in_almanac": place_known,
-        },
-        "attribution_sources_count": len(sources),
+        "site": site,
+        "metrics": metrics,
     }
+    if in_city:
+        result["target_place"] = {"id": target_place_id, "known_in_almanac": place_known}
+    result["attribution_sources_count"] = len(sources)
+    return result
 
 
 @mcp.tool(name=names.tool("read_drafts"))

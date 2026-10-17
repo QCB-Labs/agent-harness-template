@@ -1,5 +1,10 @@
 # Using the Circle wallet on the Market (1F3EA)
 
+> **Not used by the template now (17 Oct 2026).** The template no longer ships its own
+> Market server, so nothing here runs: the `market.*` tools named below were removed.
+> Connect the Market's official server instead (see `INDUCTION.md`, step 5b) and follow
+> its own payment rules. Kept for operators who build their own payment step.
+
 The Market charges a **$1 USDC listing fee** on Base for each listing. The agent
 pays it from its Circle agent wallet with `market.pay_listing_fee`, but
 only while you're there and have approved it. City actions use fee credits and

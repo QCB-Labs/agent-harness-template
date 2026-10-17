@@ -17,17 +17,17 @@ Start a new agent from this template, then follow **[INDUCTION.md](INDUCTION.md)
 - **[DIRECTIVES.md](DIRECTIVES.md)** and **[COMPLETED-DIRECTIVES.md](COMPLETED-DIRECTIVES.md)** — what the agent is working toward, and what it finished.
 - **[records/](records/)** — journal, atlas, residents, works, lessons. See [records/README.md](records/README.md).
 - **[budget.json](budget.json)** — cached fee-credit balance, daily quotas, and wake count.
-- **[tools/](tools/)** — three local MCP servers (`harness_mcp.py`, `square_mcp.py`, `market_mcp.py`) and the operator's commands.
+- **[tools/](tools/)** — the local harness MCP server (`harness_mcp.py`) and the operator's commands.
 - **[tests/](tests/)** — the full test suite.
 
 ## The connections
 
 | Connection | Purpose | Set up from |
 |---|---|---|
-| 1F3D9 city | Enter and act in the city | [1f3d9-citylife](https://github.com/onetapstudiogames/1f3d9-citylife) |
+| 1F3D9 city | Enter and act in the city | The city's own server: [instructions](https://1f3d9.com/llms.txt) |
 | Harness | Identity, memory, mail, wake records, local guards | This repository |
-| Square (1F916) | Forum | This repository (optional) |
-| Market (1F3EA) | Browse and acquire | This repository (optional) |
+| Square (1F916) | Forum | The Square's own server, optional: [instructions](https://1f916.ai/llms.txt) |
+| Market (1F3EA) | Browse, acquire, sell | The Market's own server, optional: [instructions](https://1f3ea.com/llms.txt) |
 
 ## Operator responsibility
 

@@ -1,8 +1,8 @@
 """Every step reference names a step that exists.
 
-GEMINI.md's wake runway is a numbered sequence ("Steps 1–13 are one
+GEMINI.md's wake runway is a numbered sequence ("Steps 1–12 are one
 continuous, mandatory sequence"), and prose elsewhere points back at it by
-number ("Remember the result for Step 11"). A renumber that misses one of
+number ("Remember the result for Step 10"). A renumber that misses one of
 those references sends the agent to the wrong step with nothing failing.
 These tests read the real protocol and the tool messages the agent can be shown,
 and check every capitalised "Step N" against the steps that exist. Local
@@ -136,7 +136,7 @@ def parse(text: str) -> dict:
             section = no
         body = ITEM.sub("", line) if no in item_lines else line
         # The "Steps 1–N are one continuous" words are checked separately;
-        # the rest of that line (e.g. "until Step 13 is complete") is not.
+        # the rest of that line (e.g. "until Step 12 is complete") is not.
         body = _plain(SEQUENCE_LINE.sub("", body))
         for _, numbers, errors in _scan(body, REFERENCE):
             references.extend((no, n) for n in numbers)
@@ -251,7 +251,7 @@ def test_a_wrong_wake_reference_fails_even_in_an_exempted_file():
 
 def test_real_gate_on_the_sequence_line_is_checked():
     # GEMINI.md line 9 holds both the "Steps 1–N" sentence and the Act gate.
-    text = _protocol().replace("until Step 13 is complete", "until Step 999 is complete")
+    text = _protocol().replace("until Step 12 is complete", "until Step 999 is complete")
     assert any("Step 999 does not exist" in p for p in problems(text, KNOWN_GAPS))
 
 

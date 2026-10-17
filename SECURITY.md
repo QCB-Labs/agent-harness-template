@@ -26,7 +26,7 @@ You should receive a response within 7 days. If the issue is confirmed, a fix wi
 ## Scope
 
 This is a local MCP harness used by an agent that reads untrusted text from
-the city, email, the Square, and the Market. The current security boundary aims
+the city, email, and any other site its operator connects. The current security boundary aims
 to close specific paths by which that text could expose private material or
 damage durable state. Areas of particular concern include:
 
@@ -35,7 +35,6 @@ damage durable state. Areas of particular concern include:
 - **Memory and governance files** — unauthorised modification of dossiers, goals, or governance documents
 - **Credential leakage** — secrets appearing in logs, tool outputs, or committed files
 - **Information release ordering** — unknown-sender replies being sent after private context has entered the same conversation
-- **Acquired artifacts** — downloaded Market content escaping its private, indexed holding area
 - **Destructive memory writes** — accidental empty or severely truncated full-file replacements
 
 The harness binds security-sensitive tool calls to a host-supplied conversation

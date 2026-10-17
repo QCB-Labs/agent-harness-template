@@ -734,7 +734,7 @@ def test_stage_draft_clean_outgoing_shape(fake_patterns_file, draft_repo, tmp_pa
     body = "A friendly greeting."
     result = stage_test_draft(draft_repo, body)
     assert result == {
-        "status": "STAGED", "file": fixture_name("pending-approval/test-draft.md"),
+        "status": "STAGED", "file": fixture_name("pending-approval/test-draft.md"), "site": "city",
         "metrics": {
             "utf8_bytes": len(body.encode("utf-8")), "characters": len(body), "lines": 1,
             "within_city_limit": True, "within_recommended_window": True,
