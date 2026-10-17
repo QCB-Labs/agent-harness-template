@@ -871,91 +871,6 @@ def commit_status() -> dict:
     return commit_module.status(REPO)
 
 
-@mcp.tool(name=names.tool("read_budget"))
-def read_budget() -> dict[str, object]:
-    """Return the agent's budget data (credit balance and quota usage)."""
-    return _load_budget()
-
-
-@mcp.tool(name=names.tool("update_credit_balance"))
-@stop_marker.refuse_when_stopped(lambda: REPO)
-def update_credit_balance(balance: float, source: str = "city.me") -> str:
-    """Cache the credit balance the agent read from city.me.
-
-    This is a cache, not truth. The city is truth. If the stored figure
-    and city.me disagree, the city wins and the agent updates the file.
-    """
-    if balance < 0:
-        return "REFUSED — balance cannot be negative."
-    with _file_lock("budget"):
-        data = _load_budget()
-        if not isinstance(data.get("credits"), dict):
-            data["credits"] = _default_budget()["credits"]
-        data["credits"]["balance"] = balance
-        data["credits"]["last_checked"] = _utc_now().isoformat()
-        data["credits"]["source"] = source
-        _save_budget(data)
-    return f"Credit balance updated: {balance} (source: {source})"
-
-
-@mcp.tool(name=names.tool("update_quotas"))
-@stop_marker.refuse_when_stopped(lambda: REPO)
-def update_quotas(
-    notes_left: int | None = None,
-    things_left: int | None = None,
-    agreements_left: int | None = None,
-    notes: int | None = None,
-    things: int | None = None,
-    agreements: int | None = None,
-    notes_limit: int = 50,
-    things_limit: int = 20,
-    agreements_limit: int = 5,
-) -> str:
-    """Cache today's quota usage from city.me's quotas_left.
-
-    Supports direct unpacking of city.me['quotas_left'] (notes, things, agreements)
-    as well as legacy parameters (notes_left, things_left, agreements_left).
-    """
-    if notes is not None and notes_left is None:
-        notes_left = notes
-    if things is not None and things_left is None:
-        things_left = things
-    if agreements is not None and agreements_left is None:
-        agreements_left = agreements
-
-    if notes_left is None:
-        notes_left = notes_limit
-    if things_left is None:
-        things_left = things_limit
-    if agreements_left is None:
-        agreements_left = agreements_limit
-
-    notes_used = max(0, notes_limit - notes_left)
-    things_used = max(0, things_limit - things_left)
-    agreements_used = max(0, agreements_limit - agreements_left)
-
-    with _file_lock("budget"):
-        data = _load_budget()
-        today = _utc_now().strftime("%Y-%m-%d")
-        if not isinstance(data.get("quotas"), dict):
-            data["quotas"] = _default_budget()["quotas"]
-        data["quotas"]["date"] = today
-        data["quotas"]["notes_used"] = notes_used
-        data["quotas"]["things_used"] = things_used
-        data["quotas"]["agreements_used"] = agreements_used
-        data["quotas"]["notes_limit"] = notes_limit
-        data["quotas"]["things_limit"] = things_limit
-        data["quotas"]["agreements_limit"] = agreements_limit
-        data["quotas"]["last_checked"] = _utc_now().isoformat()
-        _save_budget(data)
-    return (
-        f"Quotas updated for {today}: "
-        f"notes {notes_used}/{notes_limit}, "
-        f"things {things_used}/{things_limit}, "
-        f"agreements {agreements_used}/{agreements_limit}"
-    )
-
-
 def _empty_last_seen() -> dict[str, object]:
     return {"feeds": {}, "updated_at": None}
 
@@ -1490,7 +1405,7 @@ def read_wallet_config() -> dict[str, object]:
     except FileNotFoundError:
         return {"pay_armed": False, "note": "no wallet config found"}
     except (json.JSONDecodeError, OSError):
-        # Fail closed, and match read_budget's tolerance of a corrupt file.
+        # Fail closed, and match _load_budget's tolerance of a corrupt file.
         return {"pay_armed": False, "note": "wallet config unreadable or malformed"}
 
 

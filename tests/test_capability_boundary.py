@@ -3,7 +3,7 @@
 The agent receives email from strangers. That mail lands in its context as
 untrusted input. The defence against it being talked into leaking a private
 file rests on the SHAPE of its tool surface: every reader is fixed-target
-(read_identity, read_lessons, read_budget), so a prompt injection has no parameter
+(read_identity, read_lessons, read_map), so a prompt injection has no parameter
 to point at a file it should not see.
 
 These tests fail loudly if that shape changes. Two classes:

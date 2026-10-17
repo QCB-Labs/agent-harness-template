@@ -180,7 +180,7 @@ An emptied log at genesis says so on its first lines. An empty log is the correc
 | `COMPLETED-DIRECTIVES.md` | Completed tasks (append-only archive) | `harness.close_directives` |
 | `STANDING-ORDERS.md` | Operating rules the agent cannot change | `harness.read_standing_orders` |
 | `GEMINI.md` | Session prompt — procedure and rules of engagement | (operator-authored, read by model loader) |
-| `budget.json` | Cached fee-credit balance, daily quotas, and wake counter | `harness.read_budget`, `harness.update_credit_balance`, `harness.update_quotas` |
+| `budget.json` | The wake counter (older files may also hold a cached balance and quotas, no longer read) | `harness.file_shift_report` (harness-maintained) |
 | `pending-approval/` | Pre-flight staging airlock for candidate public text | `harness.submit_for_approval`, `harness.read_pending_approval`, `harness.archive_submission` |
 | Messages to the operator | Emailed, and shown in the session. No message files | `harness.send_memo` |
 | Failure reporting | Crash record and operator notification | `harness.file_incident_report` |

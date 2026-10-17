@@ -18,7 +18,7 @@ CID = "11111111-1111-4111-8111-111111111111"
 MODULES = (h, square, market)
 WRITES = {
     h: {'check_inbox','reply_to_message','send_new_thread','request_new_correspondent',
-        'commit_wake', 'update_credit_balance','update_quotas','update_last_seen','file_unrecorded','update_goals',
+        'commit_wake', 'update_last_seen','file_unrecorded','update_goals',
         'update_identity_evolving','archive_completed_goals','append_lesson','append_wishlist','propose_city_rule',
         'write_operator_message','authorise_spend','update_map','upsert_resident',
         'notify_crash','update_almanac','record_place','stage_draft','archive_draft','update_open_threads',
@@ -250,7 +250,7 @@ def test_writer_inventory_is_complete_and_reads_have_no_stop_guard():
             assert name.startswith(('read_', 'list_', 'query_', 'search_', 'browse_', 'recall', 'compute_', 'inspect_'))
 
 
-@pytest.mark.parametrize('reader', ['read_budget','read_goals','read_map','read_last_seen'])
+@pytest.mark.parametrize('reader', ['read_goals','read_map','read_last_seen'])
 def test_read_tools_work_under_marker(repo, reader):
     function = getattr(h, reader)
     before = function()

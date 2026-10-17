@@ -169,64 +169,6 @@ def test_read_recent_journal_finds_entries_in_monthly_subfolders(
     assert "sep entry" in result
 
 
-def test_read_budget_returns_parsed_json(isolated_repo: Path) -> None:
-    expected = {
-        "credits": {"balance": 2.0, "last_checked": "2026-09-01T10:00:00+00:00", "source": "city.me"},
-        "quotas": {
-            "date": "2026-09-01", "notes_used": 3, "things_used": 1, "agreements_used": 0,
-            "notes_limit": 50, "things_limit": 20, "agreements_limit": 5,
-            "last_checked": "2026-09-01T10:00:00+00:00",
-        },
-        "updated_at": "2026-09-01T10:00:00+00:00",
-    }
-    (isolated_repo / "budget.json").write_text(
-        json.dumps(expected), encoding="utf-8"
-    )
-
-    assert harness_mcp.read_budget() == expected
-
-
-@pytest.mark.parametrize("file_contents", [None, "{not valid json"])
-def test_read_budget_returns_fresh_default(
-    isolated_repo: Path,
-    file_contents: str | None,
-) -> None:
-    if file_contents is not None:
-        (isolated_repo / "budget.json").write_text(file_contents, encoding="utf-8")
-
-    result = harness_mcp.read_budget()
-
-    assert result == {
-        "credits": {"balance": 0.0, "last_checked": None, "source": "city.me"},
-        "quotas": {
-            "date": None, "notes_used": 0, "things_used": 0, "agreements_used": 0,
-            "notes_limit": 50, "things_limit": 20, "agreements_limit": 5,
-            "last_checked": None,
-        },
-        "updated_at": None,
-    }
-
-
-def test_update_credit_balance_writes_and_preserves_quotas(
-    isolated_repo: Path,
-) -> None:
-    # Seed with existing quotas to prove they survive a credit update.
-    seed = harness_mcp._default_budget()
-    seed["quotas"]["notes_used"] = 7
-    (isolated_repo / "budget.json").write_text(json.dumps(seed), encoding="utf-8")
-
-    result = harness_mcp.update_credit_balance(2.5, source="city.me")
-
-    assert "2.5" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["credits"]["balance"] == 2.5
-    assert data["credits"]["source"] == "city.me"
-    assert data["credits"]["last_checked"] is not None
-    # Quotas survive untouched.
-    assert data["quotas"]["notes_used"] == 7
-    assert data["updated_at"] is not None
-
-
 def test_budget_example_is_documentation_only(isolated_repo: Path) -> None:
     example = harness_mcp._default_budget()
     example["credits"]["balance"] = 99.0
@@ -234,69 +176,8 @@ def test_budget_example_is_documentation_only(isolated_repo: Path) -> None:
         json.dumps(example), encoding="utf-8"
     )
 
-    assert harness_mcp.read_budget() == harness_mcp._default_budget()
+    assert harness_mcp._load_budget() == harness_mcp._default_budget()
     assert not (isolated_repo / "budget.json").exists()
-
-
-def test_update_credit_balance_refuses_negative(isolated_repo: Path) -> None:
-    result = harness_mcp.update_credit_balance(-1.0)
-    assert "REFUSED" in result
-    assert not (isolated_repo / "budget.json").exists()
-
-
-def test_update_credit_balance_creates_file(isolated_repo: Path) -> None:
-    result = harness_mcp.update_credit_balance(3.0)
-    assert "3.0" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["credits"]["balance"] == 3.0
-
-
-def test_update_quotas_writes_today(isolated_repo: Path) -> None:
-    # city.me reports quotas_left: notes=45, things=18, agreements=4
-    result = harness_mcp.update_quotas(
-        notes_left=45, things_left=18, agreements_left=4,
-    )
-    assert "notes 5/50" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["quotas"]["notes_used"] == 5
-    assert data["quotas"]["things_used"] == 2
-    assert data["quotas"]["agreements_used"] == 1
-    assert data["quotas"]["date"] is not None
-
-
-def test_update_quotas_preserves_credits(isolated_repo: Path) -> None:
-    # Seed with a credit balance.
-    seed = harness_mcp._default_budget()
-    seed["credits"]["balance"] = 4.0
-    (isolated_repo / "budget.json").write_text(json.dumps(seed), encoding="utf-8")
-
-    harness_mcp.update_quotas(notes_left=49)  # 1 used
-
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["credits"]["balance"] == 4.0
-    assert data["quotas"]["notes_used"] == 1
-
-
-def test_update_quotas_omitted_values_default_to_zero_used(
-    isolated_repo: Path,
-) -> None:
-    """Omitting a quotas_left value assumes full quota remaining (0 used)."""
-    result = harness_mcp.update_quotas(notes_left=48)
-    assert "notes 2/50" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["quotas"]["notes_used"] == 2
-    assert data["quotas"]["things_used"] == 0
-    assert data["quotas"]["agreements_used"] == 0
-
-
-def test_update_quotas_clamps_negative_usage_to_zero(
-    isolated_repo: Path,
-) -> None:
-    """If quotas_left exceeds the limit (shouldn't happen), usage is 0."""
-    result = harness_mcp.update_quotas(notes_left=999)
-    assert "notes 0/50" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["quotas"]["notes_used"] == 0
 
 
 @pytest.mark.parametrize("file_contents", [None, "{not valid json"])
@@ -928,9 +809,6 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("read_correspondence"),
         names.tool("commit_wake"),
         names.tool("commit_status"),
-        names.tool("read_budget"),
-        names.tool("update_credit_balance"),
-        names.tool("update_quotas"),
         names.tool("read_last_seen"),
         names.tool("update_last_seen"),
         names.tool("write_journal"),
@@ -1023,9 +901,6 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("read_correspondence"),
         names.tool("commit_wake"),
         names.tool("commit_status"),
-        names.tool("read_budget"),
-        names.tool("update_credit_balance"),
-        names.tool("update_quotas"),
         names.tool("read_last_seen"),
         names.tool("update_last_seen"),
         names.tool("write_journal"),
@@ -1148,7 +1023,6 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
                     "_conversationId": CONVERSATION_ID,
                 },
             )
-            budget_result = await session.call_tool(names.tool("read_budget"))
             written_journal = await session.call_tool(names.tool("write_journal"), {"content": "Protocol write journal body 🚀"}
             )
             refused_goals = await session.call_tool(names.tool("update_goals"), {"new_text": "too short"}
@@ -1185,7 +1059,6 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     assert '"status":"REFUSED"' in inbox_result.content[0].text.replace(" ", "")
     assert reply_result.isError is False
     assert reply_result.content[0].text.startswith("REFUSED")
-    assert json.loads(budget_result.content[0].text) == budget
     assert written_journal.content[0].text.splitlines()[0].endswith(".md")
     assert refused_goals.content[0].text.startswith("REFUSED —")
     assert accepted_goals.content[0].text.startswith(f"{names.rel('goals')} updated (")
@@ -1622,7 +1495,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 74
+    assert len(tools) == 71
 
 
 
@@ -2606,21 +2479,6 @@ def test_record_place_strips_slug_and_inherits_parent_id(isolated_repo: Path) ->
     # Verify read_place reads it back
     read_back = harness_mcp.read_place(place_id=517)
     assert "A quiet outpost beyond the main cluster." in read_back
-
-
-def test_update_quotas_aliases(isolated_repo: Path) -> None:
-    # city.me returns quotas_left dict like {"notes": 48, "things": 19, "agreements": 4}
-    res = harness_mcp.update_quotas(notes=48, things=19, agreements=4)
-    assert "notes 2/50, things 1/20, agreements 1/5" in res
-
-    budget = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert budget["quotas"]["notes_used"] == 2
-    assert budget["quotas"]["things_used"] == 1
-    assert budget["quotas"]["agreements_used"] == 1
-
-    # Legacy parameters take precedence if both provided
-    res2 = harness_mcp.update_quotas(notes_left=45, notes=48)
-    assert "notes 5/50" in res2
 
 
 def test_stage_read_and_archive_draft(isolated_repo: Path) -> None:

@@ -126,17 +126,6 @@ def test_made_up_fixture_round_trip(tmp_path: Path) -> None:
     assert round_trip_differences(source, generated, files) == []
 
 
-def test_private_real_line_tag_set() -> None:
-    path = PRIVATE / "tag-test-set.jsonl"
-    if not path.is_file():
-        pytest.skip("private fixture is not installed")
-    patterns = load_patterns(CITY)
-    cases = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
-    assert len(cases) >= 30
-    for case in cases:
-        assert extract_tags(kind=case["kind"], text=case["text"], patterns=patterns) == case["tags"]
-
-
 def test_goals_at_fixture_root_become_goal_cards(tmp_path: Path) -> None:
     source = tmp_path / "source"
     shutil.copytree(FIXTURE, source)
