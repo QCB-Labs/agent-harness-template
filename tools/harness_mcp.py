@@ -70,6 +70,7 @@ from tools.outgoing_check import check_outgoing
 from tools import stop_marker
 from tools import goals as goals_module
 from tools import threads as threads_module
+from tools import commit as commit_module
 
 
 def _resolve_repo() -> Path:
@@ -445,7 +446,13 @@ def wake_status(conversation_id: HostConversationId = None) -> str:
             "Unknown email: BLOCKED.\n"
             "Reason: conversation identity or the private-use record could not be verified."
         )
-    return f"{removal}{phase_report}\n{canary_summary(REPO)}"
+    try:
+        wake_count = _load_budget().get("wake_count", 0)
+    except Exception:
+        wake_count = None
+    commit_notice = commit_module.notice(REPO, normalize_conversation_id(conversation_id), wake_count)
+    suffix = "\n" + commit_notice if commit_notice else ""
+    return f"{removal}{phase_report}\n{canary_summary(REPO)}{suffix}"
 
 
 @mcp.tool(name=names.tool("check_inbox"))
@@ -819,6 +826,26 @@ def _save_budget(data: dict[str, object]) -> None:
     )
 
 
+@mcp.tool(name=names.tool("commit_wake"))
+@stop_marker.refuse_when_stopped(lambda: REPO, structured=True)
+def commit_wake(files: list[str], summary: str) -> dict:
+    """Commit named wake files with repository hooks.
+
+    Name files individually and give a one-line summary without a wake number.
+    Files the harness keeps for you (cards, registry, resident index, seen,
+    budget) are added when changed. A name not reported as changed is refused
+    with a list of changed files.
+    If STILL_RUNNING is returned, call commit_status() once before closing.
+    """
+    return commit_module.commit_wake(REPO, files, summary, _load_budget, _file_lock("commit_wake"))
+
+
+@mcp.tool(name=names.tool("commit_status"))
+def commit_status() -> dict:
+    """Read the latest wake commit result."""
+    return commit_module.status(REPO)
+
+
 @mcp.tool(name=names.tool("read_budget"))
 def read_budget() -> dict[str, object]:
     """Return the agent's budget data (credit balance and quota usage)."""
@@ -1185,7 +1212,10 @@ def read_project(title: str, closed_in: str = "") -> str:
 @mcp.tool(name=names.tool("set_ambition"))
 @stop_marker.refuse_when_stopped(lambda: REPO, call=goals_module.CALLS["set_ambition"])
 def set_ambition(text: str) -> str:
-    """Replaces the standing ambition's text under its heading, with a backup; refuses blank text or an unmoved old list."""
+    """Replace the standing ambition.
+
+    Preserve its heading and backup; refuse blank text or an unmoved old list.
+    """
     with _file_lock("goals"):
         if not isinstance(text, str) or not text.strip():
             return goals_module.refusal("set_ambition", "Text must be a non-blank string.")
@@ -3059,6 +3089,8 @@ def help(tool: str | None = None, about: str | None = None) -> str:
         arguments = [name + (" (required)" if name in required else " = " + repr(spec.get("default")))
                      for name, spec in properties.items()]
         values = {name: _help_value(properties[name], schema.get("$defs", {})) for name in required}
+        if tool == names.tool("commit_wake"):
+            values = {"files": [names.rel("goals")], "summary": "<one line>"}
         if tool == names.tool("compute_route"):
             values = {"from_place_id": 195, "to_place_id": 196}
         if tool == names.tool("update_goals"):

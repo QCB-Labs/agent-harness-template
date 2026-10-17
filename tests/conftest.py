@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools import authority, mail, phase
+from tools import authority, mail, phase, paths
 
 
 @pytest.fixture(autouse=True)
@@ -28,6 +28,7 @@ def _isolate_live_state(tmp_path_factory: pytest.TempPathFactory,
     sandbox = tmp_path_factory.mktemp("live-state")
     monkeypatch.setattr(phase, "REPO_ROOT", sandbox)
     monkeypatch.setattr(authority, "REPO_ROOT", sandbox)
+    monkeypatch.setattr(paths, "operator_log_dir", lambda: sandbox / "logs")
     monkeypatch.setenv("AGENT_SESSION_DIR", str(sandbox / "session"))
     # Every test uses made-up patterns and never reads the operator's file.
     patterns = sandbox / "private-patterns.txt"

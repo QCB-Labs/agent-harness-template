@@ -107,6 +107,25 @@ def correspondents_path() -> Path:
     return trust_anchor_dir() / "correspondents.json"
 
 
+def inside_repo(path: Path, also: Path | None = None) -> bool:
+    """True if ``path`` resolves inside the code repository, or inside
+    ``also`` (the harness's active data repository, when it differs)."""
+    resolved = Path(path).resolve()
+    for root in (REPO_ROOT, also):
+        if root is None:
+            continue
+        root = Path(root).resolve()
+        if resolved == root or root in resolved.parents:
+            return True
+    return False
+
+
+def operator_log_dir() -> Path:
+    """Where the harness logs what only the operator should read: beside the
+    session folder, outside the repository."""
+    return session_dir().parent / "logs"
+
+
 def assert_outside_repo(path: Path) -> None:
     """Raise if a trust-anchor path resolves inside the repository.
 

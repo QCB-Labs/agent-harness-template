@@ -307,6 +307,8 @@ def refuse_when_stopped(root_getter, *, structured: bool = False, call: str | No
                     fact = "STOP.md is set." if refusal == REFUSAL else "The stop marker could not be checked."
                     refusal = (f"{tool} REFUSED: nothing was changed because {fact.rstrip('.')}; call {call}."
                                if one_sentence else f"{tool} REFUSED: nothing was changed. {fact} Call {call}.")
+                if structured and function.__name__ == "commit_wake":
+                    return {"status": "REFUSED", "reason": refusal}
                 return {"error": "STOP_MARKER", "message": refusal} if structured else refusal
             return function(*args, **kwargs)
         return guarded

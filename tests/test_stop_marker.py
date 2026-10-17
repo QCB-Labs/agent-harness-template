@@ -18,7 +18,7 @@ CID = "11111111-1111-4111-8111-111111111111"
 MODULES = (h, square, market)
 WRITES = {
     h: {'check_inbox','reply_to_message','send_new_thread','request_new_correspondent',
-        'update_credit_balance','update_quotas','update_last_seen','file_unrecorded','update_goals',
+        'commit_wake', 'update_credit_balance','update_quotas','update_last_seen','file_unrecorded','update_goals',
         'update_identity_evolving','archive_completed_goals','append_lesson','append_wishlist','propose_city_rule',
         'write_operator_message','authorise_spend','update_map','upsert_resident',
         'notify_crash','update_almanac','record_place','stage_draft','archive_draft','update_open_threads',
@@ -220,7 +220,10 @@ def test_all_local_writers_refuse_before_dependencies(repo, monkeypatch, module,
         expected = h.goals_module.refusal(name, "STOP.md is set.")
     if module is h and name in h.threads_module.CALLS:
         expected = h.threads_module.refusal(name, "STOP.md is set.")
-    assert result == (dict(error='STOP_MARKER', message=expected) if isinstance(result, dict) else expected)
+    if module is h and name == 'commit_wake':
+        assert result == dict(status='REFUSED', reason=expected)
+    else:
+        assert result == (dict(error='STOP_MARKER', message=expected) if isinstance(result, dict) else expected)
     assert snapshot(repo) == before
 
 
@@ -243,7 +246,7 @@ def test_writer_inventory_is_complete_and_reads_have_no_stop_guard():
             assert {'raise_stop','write_journal','help'} <= registered - guarded
             assert 'raise_stop' not in {n.name for n in tree.body if isinstance(n, ast.FunctionDef)
                                       and len(n.decorator_list) > 1}
-        for name in registered - guarded - {'raise_stop','write_journal','wake_status','recover_unrecorded','help'}:
+        for name in registered - guarded - {'raise_stop','write_journal','wake_status','recover_unrecorded','help','commit_status'}:
             assert name.startswith(('read_', 'list_', 'query_', 'search_', 'browse_', 'recall', 'compute_', 'inspect_'))
 
 

@@ -81,7 +81,9 @@
     "update_thread": "update_thread",
     "close_thread": "close_thread",
     "read_threads": "read_threads",
-    "read_thread": "read_thread"
+    "read_thread": "read_thread",
+    "commit_wake": "commit_wake",
+    "commit_status": "commit_status"
   },
   "wake_id": {
     "prefix": "SR-",

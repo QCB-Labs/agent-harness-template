@@ -44,6 +44,22 @@ FORBIDDEN_TOOL_NAMES = {
 
 FORBIDDEN_IMPORTS = {"subprocess", "pty", "commands"}
 
+# commit_scope.py reads staged paths and blobs for the operator commit hook.
+# backfill_casefiles.py reads git history; operator-run only, never a tool.
+SUBPROCESS_MODULES = {"rename_scheme.py", "backfill_casefiles.py", "commit_scope.py", "wallet.py", "release_scan.py", "commit.py"}  # Payments, read-only release scan, named-file commits.
+
+
+def test_subprocess_is_confined_to_approved_modules():
+    for path in (REPO / "tools").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8-sig"))
+        imports = {alias.name.split(".")[0] for node in ast.walk(tree)
+                   if isinstance(node, ast.Import) for alias in node.names}
+        imports.update((node.module or "").split(".")[0] for node in ast.walk(tree)
+                       if isinstance(node, ast.ImportFrom))
+        if "subprocess" in imports:
+            assert path.name in SUBPROCESS_MODULES
+
+
 # Parameter names that would let a caller aim a tool at an arbitrary file.
 PATH_PARAM_NAMES = {"path", "filepath", "file_path", "fullpath", "abspath", "dirpath"}
 
@@ -97,7 +113,7 @@ def test_no_tool_accepts_an_arbitrary_filesystem_path() -> None:
 def test_server_imports_no_shell_module(path: Path) -> None:
     if not path.exists():
         pytest.skip(f"{path.name} not present")
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names = {alias.name.split(".")[0] for alias in node.names}
@@ -113,7 +129,7 @@ def test_server_imports_no_shell_module(path: Path) -> None:
 def test_server_calls_no_dynamic_execution(path: Path) -> None:
     if not path.exists():
         pytest.skip(f"{path.name} not present")
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
     banned = {"eval", "exec", "compile", "__import__"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
@@ -166,7 +182,7 @@ def test_glob_patterns_never_interpolate_unvalidated_input(path: Path) -> None:
     """
     if not path.exists():
         pytest.skip(f"{path.name} not present")
-    tree = ast.parse(path.read_text(encoding="utf-8"))
+    tree = ast.parse(path.read_text(encoding="utf-8-sig"))
     constants = {
         target.id
         for node in tree.body if isinstance(node, ast.Assign)
