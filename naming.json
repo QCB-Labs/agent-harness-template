@@ -21,7 +21,10 @@
     "open_threads": "{memory}/open-matters.md",
     "city_rules": "{memory}/city-regulations.md",
     "goal_files": "{memory}/goals",
-    "projects": "{memory}/projects"
+    "projects": "{memory}/projects",
+    "threads": "{memory}/threads",
+    "threads_archive": "{memory}/open-matters-archive.md",
+    "threads_before": "{memory}/open-matters-before-split.md"
   },
   "headings": {
     "identity": "# PERSONNEL FILE",
@@ -73,7 +76,12 @@
     "close_project": "close_project",
     "read_goal": "read_goal",
     "read_project": "read_project",
-    "set_ambition": "set_ambition"
+    "set_ambition": "set_ambition",
+    "open_thread": "open_thread",
+    "update_thread": "update_thread",
+    "close_thread": "close_thread",
+    "read_threads": "read_threads",
+    "read_thread": "read_thread"
   },
   "wake_id": {
     "prefix": "SR-",

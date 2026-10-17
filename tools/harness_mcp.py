@@ -69,6 +69,7 @@ from tools.canary_check import canary_summary
 from tools.outgoing_check import check_outgoing
 from tools import stop_marker
 from tools import goals as goals_module
+from tools import threads as threads_module
 
 
 def _resolve_repo() -> Path:
@@ -2841,10 +2842,73 @@ def archive_draft(
 # ---------------------------------------------------------------------------
 
 
+@mcp.tool(name=names.tool("open_thread"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=threads_module.CALLS["open_thread"], one_sentence=True)
+def open_thread(title: str, stands: str) -> str:
+    """Creates one open thread file with its standing text and an empty Updates list."""
+    with _file_lock("threads"):
+        try:
+            path = threads_module.open_thread(REPO, title, stands)
+        except threads_module.ThreadError as error:
+            return threads_module.refusal("open_thread", str(error))
+        _recut_after_write("threads", path)
+    return f'Thread {json.dumps(title, ensure_ascii=False)} opened.'
+
+
+@mcp.tool(name=names.tool("update_thread"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=threads_module.CALLS["update_thread"], one_sentence=True)
+def update_thread(title: str, update: str, stands: str = "") -> str:
+    """Appends an update dated by the harness; non-empty stands replaces the standing text."""
+    with _file_lock("threads"):
+        try:
+            path = threads_module.update_thread(REPO, title, update, stands,
+                _load_budget().get("wake_count", 0) + 1, _utc_now().strftime("%Y-%m-%d"))
+        except threads_module.ThreadError as error:
+            return threads_module.refusal("update_thread", str(error), error.call)
+        _recut_after_write("threads", path)
+    return f'Thread {json.dumps(title, ensure_ascii=False)} updated.'
+
+
+@mcp.tool(name=names.tool("close_thread"))
+@stop_marker.refuse_when_stopped(lambda: REPO, call=threads_module.CALLS["close_thread"], one_sentence=True)
+def close_thread(title: str, how_it_closed: str) -> str:
+    """Sets the closure status and moves the file to closed; how_it_closed is one required line."""
+    with _file_lock("threads"):
+        try:
+            old, path = threads_module.close_thread(REPO, title, how_it_closed,
+                _load_budget().get("wake_count", 0) + 1, _utc_now().strftime("%Y-%m-%d"))
+        except threads_module.ThreadError as error:
+            return threads_module.refusal("close_thread", str(error), error.call)
+        _recut_after_write("threads", path)
+        _recut_after_write("threads", old)
+    return f'Thread {json.dumps(title, ensure_ascii=False)} closed.'
+
+
+@mcp.tool(name=names.tool("read_threads"), description=threads_module.settings(REPO)["read_threads_description"])
+def read_threads(start: int | float | str | bool | None = 1) -> str:
+    with _file_lock("threads"):
+        try:
+            return threads_module.read_threads(REPO, start)
+        except threads_module.ThreadError as error:
+            return threads_module.refusal("read_threads", str(error))
+
+
+@mcp.tool(name=names.tool("read_thread"), description=threads_module.settings(REPO)["read_thread_description"])
+def read_thread(title: str, closed_in: str = "") -> str:
+    with _file_lock("threads"):
+        try:
+            return threads_module.read_thread(REPO, title, closed_in)
+        except threads_module.ThreadError as error:
+            return threads_module.refusal("read_thread", str(error), error.call)
+
+
 @mcp.tool(name=names.tool("read_open_threads"))
 def read_open_threads() -> str:
     """Return the agent's open threads tracking potential returns and inquiries."""
-    return _read_text(Path(names.rel("open_threads")), "(no open threads recorded yet)")
+    with _file_lock("threads"):
+        if threads_module.exists(REPO):
+            return threads_module.read_threads(REPO)
+        return _read_text(Path(names.rel("open_threads")), "(no open threads recorded yet)")
 
 
 @mcp.tool(name=names.tool("update_open_threads"))
@@ -2852,6 +2916,8 @@ def read_open_threads() -> str:
 def update_open_threads(new_text: str) -> str:
     """Replace the full contents of memory/open-threads.md."""
     with _file_lock("threads"):
+        if threads_module.exists(REPO):
+            return threads_module.UPDATE_REFUSAL
         threads_path = REPO / names.rel("open_threads")
         written, refusal, _ = safe_replace_file(
             threads_path, new_text, 20, 0.80, names.heading("open_threads")
@@ -2924,6 +2990,8 @@ def update_works_index(new_text: str) -> str:
 
 
 def _help_group(name: str) -> str:
+    if name in set(threads_module.CALLS) | {"read_threads", "read_open_threads", "update_open_threads"}:
+        return "Threads"
     if re.search(r"goal|project|ambition", name):
         return "Goals and projects"
     if re.search(r"wake|identity|governance|operator|stop", name):
@@ -2990,6 +3058,8 @@ def help(tool: str | None = None, about: str | None = None) -> str:
             values["outcome"] = "completed"
         if tool == "serve_project":
             values["serves"] = "none"
+        if tool in {"read_threads", "read_thread"}:
+            values = threads_module.settings(REPO)["help_examples"][tool]
         example = tool + "(" + ", ".join(name + "=" + repr(value) for name, value in values.items()) + ")"
         return found.description.strip() + "\n\nArguments:\n" + "\n".join(arguments) + "\nExample: " + example
     words = (about or "").casefold().split()

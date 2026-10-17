@@ -968,6 +968,11 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("stage_draft"),
         names.tool("read_drafts"),
         names.tool("archive_draft"),
+        names.tool("open_thread"),
+        names.tool("update_thread"),
+        names.tool("close_thread"),
+        names.tool("read_threads"),
+        names.tool("read_thread"),
         names.tool("read_open_threads"),
         names.tool("update_open_threads"),
         names.tool("read_works_index"),
@@ -1056,6 +1061,11 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("stage_draft"),
         names.tool("read_drafts"),
         names.tool("archive_draft"),
+        names.tool("open_thread"),
+        names.tool("update_thread"),
+        names.tool("close_thread"),
+        names.tool("read_threads"),
+        names.tool("read_thread"),
         names.tool("read_open_threads"),
         names.tool("update_open_threads"),
         names.tool("read_works_index"),
@@ -1073,8 +1083,15 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py"):
+                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py", "threads.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
+    # Reader descriptions come from settings, so this standalone server fixture
+    # includes the same settings bytes as its copied tool modules.
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cards.json").write_bytes(
+        (Path(harness_mcp.__file__).parents[1] / "config" / "cards.json").read_bytes()
+    )
     (tools_dir / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "agent-profile.json", tmp_path / "agent-profile.json")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "naming.json", tmp_path / "naming.json")
@@ -1601,7 +1618,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 67
+    assert len(tools) == 72
 
 
 

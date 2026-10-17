@@ -21,7 +21,10 @@
     "open_threads": "{memory}/open-threads.md",
     "city_rules": "{memory}/city-rules.md",
     "goal_files": "{memory}/goals",
-    "projects": "{memory}/projects"
+    "projects": "{memory}/projects",
+    "threads": "{memory}/threads",
+    "threads_archive": "{memory}/open-threads-archive.md",
+    "threads_before": "{memory}/open-threads-before-split.md"
   },
   "headings": {
     "identity": "# PERSONA",
@@ -53,7 +56,12 @@
     "close_project": "close_project",
     "read_goal": "read_goal",
     "read_project": "read_project",
-    "set_ambition": "set_ambition"
+    "set_ambition": "set_ambition",
+    "open_thread": "open_thread",
+    "update_thread": "update_thread",
+    "close_thread": "close_thread",
+    "read_threads": "read_threads",
+    "read_thread": "read_thread"
   },
   "wake_id": {
     "prefix": "W",

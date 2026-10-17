@@ -11,5 +11,14 @@
       "regex": "\\b(\\d{4}-\\d{2}-\\d{2})\\b",
       "tag": "date:{value}"
     }
-  ]
+  ],
+  "card_shapes": {
+    "threads": {
+      "stands_heading": "(?m)^## Where it stands\\r?\\n",
+      "entries_heading": "(?m)^## Updates\\r?\\n",
+      "dated_entry": "(?m)^- \\*\\*(\\d{4}-\\d{2}-\\d{2}) \\([A-Za-z]+-?([0-9]+)\\):\\*\\*",
+      "header_label": "where it stands",
+      "label": "Thread · {title} · {section}"
+    }
+  }
 }

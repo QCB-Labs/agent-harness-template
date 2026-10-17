@@ -43,6 +43,9 @@ PLAIN: dict[str, dict[str, str]] = {
         "city_rules": "{memory}/city-rules.md",
         "goal_files": "{memory}/goals",
         "projects": "{memory}/projects",
+        "threads": "{memory}/threads",
+        "threads_archive": "{memory}/open-threads-archive.md",
+        "threads_before": "{memory}/open-threads-before-split.md",
     },
     "headings": {
         "identity": "# IDENTITY",

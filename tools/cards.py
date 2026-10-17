@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from tools import names
+
 import json
 import re
 import unicodedata
@@ -17,7 +19,8 @@ SYSTEM_FIELDS = frozenset(
     {"id", "tags", "created_at", "updated_at", "wake", "source", "channel", "weight", "origin", "role"}
 )
 LOGICAL_NAMES = (
-    "lessons", "city_rules", "open_threads", "goals", "journal", "residents", "goal_files", "projects"
+    "lessons", "city_rules", "open_threads", "goals", "journal", "residents", "goal_files", "projects", "threads",
+    "threads_archive"
 )
 VALID_KINDS = {
     "goal", "commitment", "thread", "rule", "reflection", "decision",
@@ -321,6 +324,13 @@ def _pieces_for(logical: str, text: str, path: Path, shapes: dict[str, Any] | No
         return _segments(text, re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)"), logical, path)
     if logical == "open_threads":
         return _segments(text, re.compile(r"(?m)^- \*\*.+?\*\*[^\r\n]*"), logical, path)
+    if logical == "threads_archive":
+        # The grammar of tools/threads.py: an entry runs to the next entry or
+        # the next heading, so the operator's heading lines are pieces of
+        # their own and no entry carries them.
+        starts = sorted({0, *(m.start() for m in re.finditer(r"(?m)^(?:- \*\*[^\r\n]*?\*\*[^\r\n]*|## [^\r\n]*)", text))})
+        return [(start, text[start:starts[i + 1] if i + 1 < len(starts) else len(text)])
+                for i, start in enumerate(starts) if start < len(text)]
     if logical == "goals":
         marker = re.compile(r"(?m)^(?:## [^\r\n]+|- (?! )[^\r\n].*)")
         if text and not marker.search(text):
@@ -434,6 +444,12 @@ def _card_spec(
         resolved_offset = text.find("## Resolved threads")
         if resolved_offset >= 0 and position >= resolved_offset:
             supplied["status"] = "done"
+    elif logical == "threads_archive":
+        # An archived entry is finished from its first cut. A piece that is
+        # not an entry holds the file's shape and is never returned.
+        entry = re.match(r"- \*\*", segment)
+        supplied.update(kind="thread", title=_thread_title(segment) if entry else None,
+                        status="done" if entry else "structure")
     elif logical == "goals":
         supplied["kind"] = "goal"
     elif logical == "journal":
@@ -455,12 +471,16 @@ def _heading_text(segment: str) -> str | None:
 def _prepare_pieces(logical: str, path: Path, text: str, relative: str,
                     patterns: dict[str, Any]) -> list[tuple[dict[str, Any], str, str | None, dict[str, Any], str | None]]:
     """One preparation path for fresh migration and keyed re-cutting."""
+    if logical == "threads":
+        return _prepare_threads(path, text, relative, patterns)
     if logical in {"goal_files", "projects"}:
         from tools import goals
         supplied = {"text": text, "title": goals.title_of(text),
                     "kind": "goal" if logical == "goal_files" else "project"}
         origin = {"logical": logical, "file": relative, "position": 0,
                   "order": 1, "key": path.stem, "file_tags": []}
+        if logical == "goal_files":
+            origin["file_tags"] = ["goal:" + goals.slug(supplied["title"])]
         if logical == "projects":
             parts = goals.project_parts(text)
             if parts["serves"] != "none":
@@ -542,12 +562,74 @@ def _prepare_pieces(logical: str, path: Path, text: str, relative: str,
     return prepared
 
 
+def _prepare_threads(path: Path, text: str, relative: str, patterns: dict[str, Any]):
+    from tools.goals import slug, title_of
+    cfg = patterns["card_shapes"]["threads"]
+    title = title_of(text)
+    headings = list(re.finditer(cfg["entries_heading"], text))
+    start = headings[-1].end() if headings else len(text)
+    entries = list(re.finditer(cfg["dated_entry"], text[start:]))
+    cuts = [0] + [start + entry.start() for entry in entries]
+    counts = defaultdict(int)
+    result = []
+    for order, position in enumerate(cuts):
+        end = cuts[order + 1] if order + 1 < len(cuts) else len(text)
+        segment = text[position:end]
+        if order:
+            entry = entries[order - 1]
+            date, wake = entry.group(1), str(int(entry.group(2)))
+            key = f"entry:{date}-{wake}"
+            label = f"{date} ({names.wake_id(int(wake))})"
+            role = "history"
+        else:
+            key, label, role = "header", cfg["header_label"], "current"
+        counts[key] += 1
+        if counts[key] > 1:
+            key += f"-{counts[key]}"
+        supplied = dict(kind="thread", text=segment,
+                        title=cfg["label"].format(title=title, section=label))
+        if path.parent.name == "closed":
+            supplied["status"] = "done"
+        origin = dict(logical="threads", file=relative, position=position, order=order + 1,
+                      key=key, file_tags=["thread:" + slug(title)])
+        result.append((supplied, "migration", _first_date(label) if order else None, origin, role))
+    return result
+
+
+def _tag_plan(root: Path, prepared) -> None:
+    from tools.goals import folders, files, slug, text, title_of
+    config_path = root / "config/cards.json"
+    if not config_path.is_file():
+        return
+    pattern = _config(config_path).get("plan_heading")
+    if not pattern:
+        return
+    names = [title_of(text(path)) for folder in folders(root) for path in files(folder)]
+    for supplied, _, _, origin, _ in prepared:
+        if not re.search(pattern, supplied["text"]):
+            continue
+        # A literal whole-name search, with Unicode word boundaries. Names
+        # never become file-search patterns, and only this plan piece is tagged.
+        body = supplied["text"].casefold()
+        tags = set(origin.get("file_tags", []))
+        for name in names:
+            needle = name.casefold()
+            cursor = 0
+            while (found := body.find(needle, cursor)) >= 0:
+                end = found + len(needle)
+                if (found == 0 or not (body[found - 1].isalnum() or body[found - 1] == "_")) and (end == len(body) or not (body[end].isalnum() or body[end] == "_")):
+                    tags.add("goal:" + slug(name))
+                    break
+                cursor = end
+        origin["file_tags"] = sorted(tags)
+
+
 def _source_files(root: Path, logical: str, relative: str, excluded: str | None) -> list[Path]:
     target = root / relative
     if target.is_file():
         return [target]
     if not target.is_dir():
-        if logical in {"goal_files", "projects"}:
+        if logical in {"goal_files", "projects", "threads", "open_threads", "threads_archive"}:
             return []
         raise MigrationFormatError(f"{logical}: configured path does not exist: {relative}")
     excluded_path = (root / excluded).resolve() if excluded else None
@@ -585,13 +667,16 @@ def migrate(
             continue
         files = _source_files(root, logical, relative, naming["indexes"].get(logical))
         if not files:
-            if logical in {"goal_files", "projects"}:
+            if logical in {"goal_files", "projects", "threads", "open_threads", "threads_archive"}:
                 continue
             raise MigrationFormatError(f"{logical}: no source files under {relative}")
         for path in files:
             text = _read_source_text(path)
             relative_path = path.relative_to(root).as_posix()
-            for supplied, wake, created_at, origin, role in _prepare_pieces(logical, path, text, relative_path, store.patterns):
+            prepared = _prepare_pieces(logical, path, text, relative_path, store.patterns)
+            if logical == "journal":
+                _tag_plan(root, prepared)
+            for supplied, wake, created_at, origin, role in prepared:
                 card = store.write(supplied, wake=wake, source="self", channel="migration",
                                    origin=origin, created_at=created_at, role=role)
                 if logical == "residents" and supplied.get("status") == "recheck":
@@ -756,7 +841,7 @@ def recall(
     allowed = set(kinds) if kinds else None
     matches = [
         card for card in state.values()
-        if (card.get("status") in {"live", "recheck"} or (history and card["kind"] == "project" and card.get("status") == "done"))
+        if (card.get("status") in {"live", "recheck"} or (history and card.get("status") == "done" and (card["kind"] == "project" or (card["kind"] == "thread" and (card.get("origin") or {}).get("logical") in {"threads", "threads_archive"} and not card.get("status_reason")))))
         and (not wanted or wanted.intersection(card.get("tags", [])))
         and (allowed is None or card["kind"] in allowed)
         and (needle is None or needle in ((card.get("title") or "") + "\n" + card["text"]).lower())
@@ -914,9 +999,24 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
                 store.append_version(old, role=role, **changes)
                 result["changed"].append(old["id"])
         return result
+    if logical in {"threads", "open_threads", "threads_archive"} and not path.is_file():
+        for old in existing:
+            store.append_version(old, status="done", status_reason="removed from source file")
+            result["removed"].append(old["id"])
+        return result
     full_prepared = _prepare_pieces(logical, path, source_text, relative, store.patterns)
-    if logical in {"journal", "residents"}:
+    if logical == "journal":
+        _tag_plan(root, full_prepared)
+    if logical in {"journal", "residents", "threads"}:
         active = [c for c in existing if c.get("status_reason") != "re-cut into keyed pieces"]
+        if logical == "threads" and path.parent.name == "closed" and not active:
+            from tools.goals import slug, title_of
+            opened = path.parent.parent / (slug(title_of(source_text)) + ".md")
+            if not opened.exists():
+                open_relative = opened.relative_to(root).as_posix()
+                active = [c for c in state.values() if (c.get("origin") or {}).get("logical") == logical
+                          and (c.get("origin") or {}).get("file") == open_relative
+                          and c.get("status") == "live"]
         if any((c.get("origin") or {}).get("key") is None for c in active):
             for old in active:
                 store.append_version(old, status="done", status_reason="re-cut into keyed pieces")
@@ -1030,7 +1130,7 @@ def recut_all(repo_root: Path, naming_path: Path, patterns_path: Path, logical: 
         counts["files"] += 1
         for output, key in (("made", "new"), ("closed", "removed"), ("changed", "changed"), ("left_alone", "unchanged")):
             counts[output] += len(result[key])
-    if logical in {"goal_files", "projects"}:
+    if logical in {"goal_files", "projects", "threads", "open_threads", "threads_archive"}:
         raw = json.loads(Path(naming_path).read_bytes())
         memory = Path(repo_root) / raw.get("dirs", {}).get("memory", "memory")
         store = CardStore(memory, patterns_path)
@@ -1212,7 +1312,20 @@ def read_wake_card(
     owing = sorted((c for c in cards if c["kind"] == "commitment" and c["status"] == "live"), key=lambda c: c["created_at"])
     if due_card is not None:
         owing.insert(0, due_card)
-    threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
+    from tools import threads as thread_files
+    new_threads = thread_files.exists(root)
+    if new_threads:
+        headers = {c["origin"]["file"]: c for c in cards
+                   if (c.get("origin") or {}).get("logical") == "threads"
+                   and c.get("origin", {}).get("key") == "header" and c["status"] == "live"}
+        threads = []
+        for item in thread_files.summaries(root):
+            relative = item["path"].relative_to(root).as_posix()
+            header = headers.get(relative)
+            tags = header.get("tags", []) if header else []
+            threads.append(dict(id=relative, kind="thread", title=item["title"], tags=tags))
+    else:
+        threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
     rules = _file_order([c for c in cards if c["kind"] == "rule" and c["status"] == "live"])
     checking = sorted((c for c in cards if c["status"] == "recheck"), key=lambda c: (c.get("weight", 0), c["created_at"]), reverse=True)
     withheld_rules = {
@@ -1237,6 +1350,16 @@ def read_wake_card(
     def build_section(
         name: str, candidates: list[dict[str, Any]], budget: int, max_cards: int | None = None,
     ) -> dict[str, Any]:
+        if name == "Open threads (index)" and new_threads:
+            thread_cfg = thread_files.settings(root)
+            entries = [thread_cfg["wake_line"].format(title=c["title"],
+                       tags=", ".join(t for t in c["tags"] if t.startswith(("place:", "resident:"))))
+                       for c in candidates]
+            def tail(left):
+                return [thread_cfg["wake_omitted"].format(count=left)] if left else []
+            body, shown = thread_files.fit_lines(entries, budget, tail, max_cards)
+            return {"name": name, "text": body, "bytes": _utf8_bytes(body),
+                    "shown": shown, "left_out": len(entries) - shown}
         if name in {"Open threads (index)", "Rules"}:
             section = _wake_added_section(name, candidates, budget, max_cards)
             if name == "Rules" and any(withheld_rules.values()):
