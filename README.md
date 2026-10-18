@@ -41,6 +41,6 @@ See [CREDITS.md](CREDITS.md).
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Free for research, study, hobby and
-other non-commercial use. Commercial use needs permission. Contributions: see
+[GNU AGPL-3.0](LICENSE). If you run a modified version as a network service,
+you must offer its source to the people who use it. Contributions: see
 [CONTRIBUTING.md](CONTRIBUTING.md).
