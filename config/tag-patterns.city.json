@@ -1,0 +1,138 @@
+{
+  "ambiguous_refs": true,
+  "names_from_index": {
+    "id_tag": "resident:{value}",
+    "regexes": [
+      "(?m)^\\|\\s*\\*\\*([^*|]+)\\*\\*\\s*\\|\\s*([0-9]+)?",
+      "(?m)^- \\*\\*([^*]+)\\*\\*(?:[^\\n]*?#([0-9]+))?"
+    ]
+  },
+  "patterns": [
+    {
+      "group": 1,
+      "regex": "\\b(W\\d{3,})\\b",
+      "tag": "wake:{value}"
+    },
+    {
+      "group": 1,
+      "regex": "\\b(\\d{4}-\\d{2}-\\d{2})\\b",
+      "tag": "date:{value}"
+    },
+    {
+      "group": 1,
+      "regex": "(?:\\bresident(?:\\s+id)?\\s*[:#]\\s*|\\bresident[^\\n]{0,40}\\(#)([0-9]+)\\)?",
+      "tag": "resident:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bSquare(?:\\s+citizen(?:\\s+id)?)?\\s*[:#]?\\s*#?([0-9]+)",
+      "tag": "square:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\b(?:Market|Bazaar)(?:\\s+merchant(?:\\s+id)?)?\\s*[:#]?\\s*#?([0-9]+)",
+      "tag": "market:{value}",
+      "typed_ref": true
+    },
+    {
+      "capture_all": "[0-9]+",
+      "group": 1,
+      "regex": "\\bPlaces?\\s+((?:#?[0-9]+)(?:\\s*(?:,|&|and|[-–])\\s*#?[0-9]+)*)",
+      "tag": "place:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bContinent\\s*#?([0-9]+)",
+      "tag": "continent:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bNote\\s*#([0-9]+)",
+      "tag": "note:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bThing\\s*#([0-9]+)",
+      "tag": "thing:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bPost\\s*#([0-9]+)",
+      "tag": "post:{value}",
+      "typed_ref": true
+    },
+    {
+      "group": 1,
+      "regex": "\\bKind\\s*#([0-9]+)",
+      "tag": "kind-id:{value}",
+      "typed_ref": true
+    },
+    {
+      "capture_all": "[0-9]+",
+      "group": 1,
+      "regex": "(?i)(?:route|routing|parent|child|hinge|move|travel)[^\\n]{0,80}\\[([0-9]+(?:\\s*[, &]\\s*[0-9]+)*)\\]",
+      "tag": "place:{value}",
+      "typed_ref": true
+    },
+    {
+      "capture_all": "[0-9]+",
+      "group": 1,
+      "regex": "\\bDispatch(?:es)?\\s+((?:#[0-9]+)(?:\\s*(?:,|&|and)\\s*#[0-9]+)*)",
+      "tag": "post:{value}",
+      "typed_ref": true
+    }
+  ],
+  "section_status": {
+    "city_rules": [
+      {
+        "heading": "^how a rule",
+        "status": "structure"
+      },
+      {
+        "heading": "^proposed",
+        "status": "recheck"
+      },
+      {
+        "heading": "^retracted",
+        "status": "done"
+      },
+      {
+        "skip": "^- [(]none yet"
+      }
+    ]
+  },
+  "card_shapes": {
+    "journal": {
+      "header_label": "header",
+      "label": "{prefix} · {section}",
+      "file_date": "^\\*\\*Date:\\*\\*\\s*(\\d{4}-\\d{2}-\\d{2})"
+    },
+    "residents": {
+      "header_label": "header",
+      "label": "{prefix} · {section}",
+      "prefix": "Resident #{id} · {handle}",
+      "prefix_without_id": "Resident · {handle}",
+      "entries_heading": "^## Sourced Observations\\s*$",
+      "dated_entry": "^-\\s+(?:\\*\\*)?(\\d{4}-\\d{2}-\\d{2})(?=\\*\\*|\\s|\\[|:|$)",
+      "handle": "^(?:-\\s*\\*\\*Handle:\\*\\*\\s*|#\\s*Resident:\\s*)([^\\r\\n(]+)",
+      "resident_id": [
+        "^-\\s*\\*\\*Resident ID:\\*\\*\\s*(\\d+)\\s*$",
+        "^#\\s*Resident:[^\\r\\n]*?\\(#(\\d+)\\)",
+        "\\bresident\\s*#(\\d+)"
+      ]
+    },
+    "threads": {
+      "stands_heading": "(?m)^## Where it stands\\r?\\n",
+      "entries_heading": "(?m)^## Updates\\r?\\n",
+      "dated_entry": "(?m)^- \\*\\*(\\d{4}-\\d{2}-\\d{2}) \\([A-Za-z]+-?([0-9]+)\\):\\*\\*",
+      "header_label": "where it stands",
+      "label": "Thread · {title} · {section}"
+    }
+  }
+}

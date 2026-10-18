@@ -1,0 +1,604 @@
+{
+  "crlf": [
+    {
+      "id": "rule-0001",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 13,
+        "order": 1
+      },
+      "sha256": "365101426ca5a1b25e2de3a64bbcd4eb05ca92c88402a9484d5ab85ea0637168"
+    },
+    {
+      "id": "rule-0002",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 59,
+        "order": 2
+      },
+      "sha256": "5e9c655e01dbb77168b7f48c468eaf2be8797433e147dcf045272c3c71826c88"
+    },
+    {
+      "id": "rule-0003",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 79,
+        "order": 3
+      },
+      "sha256": "f2d779b4e86cab76588ce0041b9849c20dac935e745efbfeecd59e262bf02a0b"
+    },
+    {
+      "id": "reflection-0001",
+      "kind": "reflection",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 185,
+        "order": 4
+      },
+      "sha256": "36a3a085204e9df179ed16d936e862100a50a11c5cefc72c3a7199de2896dbfa"
+    },
+    {
+      "id": "rule-0004",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 2070,
+        "order": 5
+      },
+      "sha256": "b01359575256b2a710b71e5ed732e34c22e069e6711c6ef51d8868a795f3f9cd"
+    },
+    {
+      "id": "rule-0005",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 26,
+        "order": 1
+      },
+      "sha256": "07c0fa7bed3d16327b5e712730fee61f2f309580f96eecc3e269553960a16c59"
+    },
+    {
+      "id": "rule-0006",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 90,
+        "order": 2
+      },
+      "sha256": "84b37287f9a5146bb08884ad29c7710dc5c1055f057e9b6a5b1dffcb1e465531"
+    },
+    {
+      "id": "rule-0007",
+      "kind": "rule",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 106,
+        "order": 3
+      },
+      "sha256": "8e410097dccb65422b0d0b995ff984e9885b716d5f61fb21e32fa3b78fe9cc09"
+    },
+    {
+      "id": "rule-0008",
+      "kind": "rule",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 156,
+        "order": 4
+      },
+      "sha256": "cdc4004b310c9025d40e7ed5929b20b478b8103359ca45b47eb0c726cf67099b"
+    },
+    {
+      "id": "rule-0009",
+      "kind": "rule",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 205,
+        "order": 5
+      },
+      "sha256": "b01ffe13d260ff94f9849d3c09cc1a7e3e8f066bdec94e9c64bc85fb88ed8d07"
+    },
+    {
+      "id": "rule-0010",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 995,
+        "order": 6
+      },
+      "sha256": "e840d3fb7d8e901c85e71dc323ec1e853909ade23b6dae1e1f0a6a4569c79cdd"
+    },
+    {
+      "id": "rule-0011",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1040,
+        "order": 7
+      },
+      "sha256": "6681c312cac970ba6079ff5446d78b60acd5fc2f309c96588b2a0a5e2ad4c695"
+    },
+    {
+      "id": "rule-0012",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1089,
+        "order": 8
+      },
+      "sha256": "873d0a18d29d0e5a053a7f98427d2ce66f772e044a19fdafed856f0ce5cc547e"
+    },
+    {
+      "id": "rule-0013",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1136,
+        "order": 9
+      },
+      "sha256": "4d7da335f8c30fbbd8317913940c5f6fb487c74b4dad861e14064e743e4255bc"
+    },
+    {
+      "id": "rule-0014",
+      "kind": "rule",
+      "title": null,
+      "status": "done",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1185,
+        "order": 10
+      },
+      "sha256": "8add8237de8e49ec0cbd0f48ba4a72780e29d2a6308803b07226b8a98a71b4c3"
+    },
+    {
+      "id": "thread-0001",
+      "kind": "thread",
+      "title": "First spool",
+      "status": "live",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 41,
+        "order": 1
+      },
+      "sha256": "605c8f722b97f73954e96449fbbee08c7334a3e56eca1b262add090b3984c70c"
+    },
+    {
+      "id": "thread-0002",
+      "kind": "thread",
+      "title": "Middle spool",
+      "status": "live",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 157,
+        "order": 2
+      },
+      "sha256": "480d6479974195385e5bb085435d204c93a62b2ee8e6730e640c980aaea6be0e"
+    },
+    {
+      "id": "thread-0003",
+      "kind": "thread",
+      "title": "Long spool",
+      "status": "live",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 217,
+        "order": 3
+      },
+      "sha256": "82133ffa45120aa842c737a9784ba1d8cd54d566bac5723197aebbbf33a6d735"
+    },
+    {
+      "id": "thread-0004",
+      "kind": "thread",
+      "title": "Last spool",
+      "status": "done",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 5321,
+        "order": 4
+      },
+      "sha256": "18b75fb1c2948d0a4ed87f7a15b7b8e0e442ebc561d36477de3370a11006f359"
+    },
+    {
+      "id": "goal-0001",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 0,
+        "order": 1
+      },
+      "sha256": "13d9849dffb18685d49d3ff0210361061d249840d8814aad4d6260d0488a75a7"
+    },
+    {
+      "id": "goal-0002",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 46,
+        "order": 2
+      },
+      "sha256": "4543a251c1ba169c4410d3e1abd79ea234d06cb33f0012fda6526508fe1edc00"
+    },
+    {
+      "id": "goal-0003",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 103,
+        "order": 3
+      },
+      "sha256": "33e9742803c0381787844db3e5522083c1bb0ff754e86e07a57f0776127461ee"
+    },
+    {
+      "id": "goal-0004",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 2302,
+        "order": 4
+      },
+      "sha256": "72f3bb25946a3ae70b52fdb33fd1f92695f0ab2262cd47e44b6af58c0ca093ad"
+    }
+  ],
+  "lf": [
+    {
+      "id": "rule-0001",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 11,
+        "order": 1
+      },
+      "sha256": "377aa142216d4f5ebab984908ced3e190348cd6a0fb263d3cfc5bc67cacad075"
+    },
+    {
+      "id": "rule-0002",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 53,
+        "order": 2
+      },
+      "sha256": "26d229231b0d7142c35cdbfd9e3e731fedee8ef200edd092ef181be0c2eeab52"
+    },
+    {
+      "id": "rule-0003",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 72,
+        "order": 3
+      },
+      "sha256": "27c81bff5423ff5e92e62d8a31c2e948ee03a9024512ca8f4eaa7f5dceecd645"
+    },
+    {
+      "id": "reflection-0001",
+      "kind": "reflection",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 172,
+        "order": 4
+      },
+      "sha256": "4d14b1b280c257eb4c7a63464f0e9badcd95c92ba7600c5befd97d798f7aae07"
+    },
+    {
+      "id": "rule-0004",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "lessons",
+        "file": "memory/lessons.md",
+        "position": 2032,
+        "order": 5
+      },
+      "sha256": "4c6a6a8ebda3cf0d4be852147c0a7a2e6aa70f6c8d0d4b591f773d2addac6ed5"
+    },
+    {
+      "id": "rule-0005",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 24,
+        "order": 1
+      },
+      "sha256": "f856fda646f61c1edd4b6b6240c6b025414bd3a1f77df0f9815b19e92d55d559"
+    },
+    {
+      "id": "rule-0006",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 84,
+        "order": 2
+      },
+      "sha256": "52220f704650d20141ce42832b47b018d1494abd85536f023a974e229c6d7dcd"
+    },
+    {
+      "id": "rule-0007",
+      "kind": "rule",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 98,
+        "order": 3
+      },
+      "sha256": "12f017866952638bb598bd667337428dc92c8ec3be56234057648f6cf62c29e5"
+    },
+    {
+      "id": "rule-0008",
+      "kind": "rule",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 146,
+        "order": 4
+      },
+      "sha256": "061ed46165b9f98bb31bf44b2013d6b38710427d072112e16e65b814c9ce25b8"
+    },
+    {
+      "id": "rule-0009",
+      "kind": "rule",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 193,
+        "order": 5
+      },
+      "sha256": "9b77187cb0d7f907a99890c56131d8773cecd9b418097b61357cb2f8f9fbcdbd"
+    },
+    {
+      "id": "rule-0010",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 971,
+        "order": 6
+      },
+      "sha256": "0d88d780869dfc67d27f55a06d01a261229bbb053d65fda8004d8500347188a4"
+    },
+    {
+      "id": "rule-0011",
+      "kind": "rule",
+      "title": null,
+      "status": "recheck",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1014,
+        "order": 7
+      },
+      "sha256": "3f0ab59e43558d3f875ffda2476ac8fa7afe5d21894c3fa96969c89ee2ded36b"
+    },
+    {
+      "id": "rule-0012",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1062,
+        "order": 8
+      },
+      "sha256": "ef516c524a204cea4fc34e519eac9428e7a9dfce14e4e35df4b9a49fb8328385"
+    },
+    {
+      "id": "rule-0013",
+      "kind": "rule",
+      "title": null,
+      "status": "structure",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1107,
+        "order": 9
+      },
+      "sha256": "5606ebd10e280535fcdcd09444a5fa1601d6bbfb7131df95ad60e011cac34b7b"
+    },
+    {
+      "id": "rule-0014",
+      "kind": "rule",
+      "title": null,
+      "status": "done",
+      "origin": {
+        "logical": "city_rules",
+        "file": "memory/city-rules.md",
+        "position": 1154,
+        "order": 10
+      },
+      "sha256": "ef2bbf910ca96cbe829431d9a8aaff9b32ae92f9697f3d76bab8c9c36c0d1ad4"
+    },
+    {
+      "id": "thread-0001",
+      "kind": "thread",
+      "title": "First spool",
+      "status": "live",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 37,
+        "order": 1
+      },
+      "sha256": "31e900bc8753a24674e3736b361f1d388e47e3ab1bc4e138cd51d7ac8d460934"
+    },
+    {
+      "id": "thread-0002",
+      "kind": "thread",
+      "title": "Middle spool",
+      "status": "live",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 149,
+        "order": 2
+      },
+      "sha256": "4335e65ea39ca1cda9bdb6bdcf8952c92150d8d2c9a15c0c51301799931c11e8"
+    },
+    {
+      "id": "thread-0003",
+      "kind": "thread",
+      "title": "Long spool",
+      "status": "live",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 207,
+        "order": 3
+      },
+      "sha256": "74fdcd6ae0e8227fbc087d5e5ac72f62e3dda2b54ec36c2b96622646bc0fec39"
+    },
+    {
+      "id": "thread-0004",
+      "kind": "thread",
+      "title": "Last spool",
+      "status": "done",
+      "origin": {
+        "logical": "open_threads",
+        "file": "memory/open-threads.md",
+        "position": 5242,
+        "order": 4
+      },
+      "sha256": "d5f0f82f0786b929ac2a4928804c142dbbecf58012bb8878125c729681080d94"
+    },
+    {
+      "id": "goal-0001",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 0,
+        "order": 1
+      },
+      "sha256": "c1b6a2b01032e0d6a52a920b3d8f1dbf2181c30ce9e3a4a5fa0177eb0500aaa8"
+    },
+    {
+      "id": "goal-0002",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 42,
+        "order": 2
+      },
+      "sha256": "e15298c12b402c9879dd58f525046e939bddf17060afda23f5bc9025020d0c20"
+    },
+    {
+      "id": "goal-0003",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 94,
+        "order": 3
+      },
+      "sha256": "8e6862987068960f6da647e8f126ab6b213cb131eb22a2032c4de30173424dd4"
+    },
+    {
+      "id": "goal-0004",
+      "kind": "goal",
+      "title": null,
+      "status": "live",
+      "origin": {
+        "logical": "goals",
+        "file": "goals.md",
+        "position": 2262,
+        "order": 4
+      },
+      "sha256": "22b5581ccb432de4986b3ee593e3673865e97d2ab3571a75a3d8482f3e5cfabb"
+    }
+  ]
+}

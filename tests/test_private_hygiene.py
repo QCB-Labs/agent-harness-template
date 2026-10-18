@@ -84,11 +84,14 @@ def test_no_private_patterns_in_tracked_files(monkeypatch) -> None:
             "private-pattern scan unavailable"
         )
 
+    patterns = outgoing_check.load_private_patterns()  # once per scan
+    if patterns is None:
+        # The file exists but could not be read: never pass unchecked.
+        pytest.fail("private pattern file could not be read")
+
     def private(line: str) -> bool:
-        return any(
-            finding.kind == "private-pattern"
-            for finding in outgoing_check._check_private_patterns(line)
-        )
+        return any(f.kind == "private-pattern"
+                   for f in outgoing_check.check_loaded_patterns(line, patterns))
 
     hits = _lines_with(_tracked_text_files(), private)
     # Report file and line only; never the matched text.

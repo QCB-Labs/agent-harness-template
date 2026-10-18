@@ -89,9 +89,10 @@ def test_simple_reader_returns_full_utf8_content(
 ) -> None:
     path = isolated_repo / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(expected, encoding="utf-8")
+    path.write_bytes(expected.encode("utf-8"))
 
-    assert reader() == expected
+    answer = expected + "\n\nClosed projects: 0." if reader is harness_mcp.read_goals else expected
+    assert reader() == answer
 
 
 @pytest.mark.parametrize(
@@ -168,64 +169,6 @@ def test_read_recent_journal_finds_entries_in_monthly_subfolders(
     assert "sep entry" in result
 
 
-def test_read_budget_returns_parsed_json(isolated_repo: Path) -> None:
-    expected = {
-        "credits": {"balance": 2.0, "last_checked": "2026-09-01T10:00:00+00:00", "source": "city.me"},
-        "quotas": {
-            "date": "2026-09-01", "notes_used": 3, "things_used": 1, "agreements_used": 0,
-            "notes_limit": 50, "things_limit": 20, "agreements_limit": 5,
-            "last_checked": "2026-09-01T10:00:00+00:00",
-        },
-        "updated_at": "2026-09-01T10:00:00+00:00",
-    }
-    (isolated_repo / "budget.json").write_text(
-        json.dumps(expected), encoding="utf-8"
-    )
-
-    assert harness_mcp.read_budget() == expected
-
-
-@pytest.mark.parametrize("file_contents", [None, "{not valid json"])
-def test_read_budget_returns_fresh_default(
-    isolated_repo: Path,
-    file_contents: str | None,
-) -> None:
-    if file_contents is not None:
-        (isolated_repo / "budget.json").write_text(file_contents, encoding="utf-8")
-
-    result = harness_mcp.read_budget()
-
-    assert result == {
-        "credits": {"balance": 0.0, "last_checked": None, "source": "city.me"},
-        "quotas": {
-            "date": None, "notes_used": 0, "things_used": 0, "agreements_used": 0,
-            "notes_limit": 50, "things_limit": 20, "agreements_limit": 5,
-            "last_checked": None,
-        },
-        "updated_at": None,
-    }
-
-
-def test_update_credit_balance_writes_and_preserves_quotas(
-    isolated_repo: Path,
-) -> None:
-    # Seed with existing quotas to prove they survive a credit update.
-    seed = harness_mcp._default_budget()
-    seed["quotas"]["notes_used"] = 7
-    (isolated_repo / "budget.json").write_text(json.dumps(seed), encoding="utf-8")
-
-    result = harness_mcp.update_credit_balance(2.5, source="city.me")
-
-    assert "2.5" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["credits"]["balance"] == 2.5
-    assert data["credits"]["source"] == "city.me"
-    assert data["credits"]["last_checked"] is not None
-    # Quotas survive untouched.
-    assert data["quotas"]["notes_used"] == 7
-    assert data["updated_at"] is not None
-
-
 def test_budget_example_is_documentation_only(isolated_repo: Path) -> None:
     example = harness_mcp._default_budget()
     example["credits"]["balance"] = 99.0
@@ -233,69 +176,8 @@ def test_budget_example_is_documentation_only(isolated_repo: Path) -> None:
         json.dumps(example), encoding="utf-8"
     )
 
-    assert harness_mcp.read_budget() == harness_mcp._default_budget()
+    assert harness_mcp._load_budget() == harness_mcp._default_budget()
     assert not (isolated_repo / "budget.json").exists()
-
-
-def test_update_credit_balance_refuses_negative(isolated_repo: Path) -> None:
-    result = harness_mcp.update_credit_balance(-1.0)
-    assert "REFUSED" in result
-    assert not (isolated_repo / "budget.json").exists()
-
-
-def test_update_credit_balance_creates_file(isolated_repo: Path) -> None:
-    result = harness_mcp.update_credit_balance(3.0)
-    assert "3.0" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["credits"]["balance"] == 3.0
-
-
-def test_update_quotas_writes_today(isolated_repo: Path) -> None:
-    # city.me reports quotas_left: notes=45, things=18, agreements=4
-    result = harness_mcp.update_quotas(
-        notes_left=45, things_left=18, agreements_left=4,
-    )
-    assert "notes 5/50" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["quotas"]["notes_used"] == 5
-    assert data["quotas"]["things_used"] == 2
-    assert data["quotas"]["agreements_used"] == 1
-    assert data["quotas"]["date"] is not None
-
-
-def test_update_quotas_preserves_credits(isolated_repo: Path) -> None:
-    # Seed with a credit balance.
-    seed = harness_mcp._default_budget()
-    seed["credits"]["balance"] = 4.0
-    (isolated_repo / "budget.json").write_text(json.dumps(seed), encoding="utf-8")
-
-    harness_mcp.update_quotas(notes_left=49)  # 1 used
-
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["credits"]["balance"] == 4.0
-    assert data["quotas"]["notes_used"] == 1
-
-
-def test_update_quotas_omitted_values_default_to_zero_used(
-    isolated_repo: Path,
-) -> None:
-    """Omitting a quotas_left value assumes full quota remaining (0 used)."""
-    result = harness_mcp.update_quotas(notes_left=48)
-    assert "notes 2/50" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["quotas"]["notes_used"] == 2
-    assert data["quotas"]["things_used"] == 0
-    assert data["quotas"]["agreements_used"] == 0
-
-
-def test_update_quotas_clamps_negative_usage_to_zero(
-    isolated_repo: Path,
-) -> None:
-    """If quotas_left exceeds the limit (shouldn't happen), usage is 0."""
-    result = harness_mcp.update_quotas(notes_left=999)
-    assert "notes 0/50" in result
-    data = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert data["quotas"]["notes_used"] == 0
 
 
 @pytest.mark.parametrize("file_contents", [None, "{not valid json"])
@@ -390,7 +272,7 @@ def test_write_journal_creates_wake_numbered_file_and_cleans_recovery(
 
     content = "Test journal entry: Signals received! 🚀\nFull UTF-8 body."
 
-    result_path = harness_mcp.write_journal(content)
+    result_path = harness_mcp.write_journal(content).splitlines()[0]
 
     journal_dir = isolated_repo / names.rel("journal")
     assert result_path == f"2026-09/{names.wake_id(1)}-2026-09-01.md"
@@ -423,7 +305,9 @@ def test_write_journal_records_even_when_email_fails(
     monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
     monkeypatch.setattr(harness_mcp, "_send_email", lambda subject, body: False)
 
-    result_path = harness_mcp.write_journal("Entry")
+    reply = harness_mcp.write_journal("Entry")
+    result_path = reply.splitlines()[0]
+    assert "not sent" in reply
 
     assert (isolated_repo / names.rel("journal") / result_path).exists()
 
@@ -468,7 +352,7 @@ def test_write_journal_uses_collision_suffixes(
     (month_dir / f"{base}.md").write_text("existing", encoding="utf-8")
     (month_dir / f"{base}-b.md").write_text("existing b", encoding="utf-8")
 
-    result_path = harness_mcp.write_journal("Collision entry")
+    result_path = harness_mcp.write_journal("Collision entry").splitlines()[0]
 
     assert result_path == f"2026-09/{base}-c.md"
     assert (journal_dir / result_path).read_text(encoding="utf-8") == "Collision entry"
@@ -901,7 +785,7 @@ def test_read_wallet_config_returns_safe_default_when_missing(
 
 
 @pytest.mark.asyncio
-async def test_server_exposes_ticket_one_plus_write_journal() -> None:
+async def test_server_exposes_exactly_its_registered_tools() -> None:
     tools = await harness_mcp.mcp.list_tools()
 
     assert [tool.name for tool in tools] == [
@@ -909,24 +793,36 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
         names.tool("read_governance"),
         names.tool("read_operator"),
         names.tool("read_goals"),
+        names.tool("recall"),
+        names.tool("read_card"),
+        names.tool("read_wake_card"),
         names.tool("read_lessons"),
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
         names.tool("read_recent_journal"),
+        names.tool("raise_stop"),
         names.tool("wake_status"),
         names.tool("check_inbox"),
         names.tool("reply_to_message"),
         names.tool("send_new_thread"),
         names.tool("request_new_correspondent"),
         names.tool("read_correspondence"),
-        names.tool("read_budget"),
-        names.tool("update_credit_balance"),
-        names.tool("update_quotas"),
+        names.tool("commit_wake"),
+        names.tool("commit_status"),
         names.tool("read_last_seen"),
         names.tool("update_last_seen"),
         names.tool("write_journal"),
         names.tool("recover_unrecorded"),
         names.tool("file_unrecorded"),
+        names.tool("set_goal"),
+        names.tool("drop_goal"),
+        names.tool("open_project"),
+        names.tool("serve_project"),
+        names.tool("advance_project"),
+        names.tool("close_project"),
+        names.tool("read_goal"),
+        names.tool("read_project"),
+        names.tool("set_ambition"),
         names.tool("update_goals"),
         names.tool("update_identity_evolving"),
         names.tool("archive_completed_goals"),
@@ -952,14 +848,18 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
         names.tool("stage_draft"),
         names.tool("read_drafts"),
         names.tool("archive_draft"),
+        names.tool("open_thread"),
+        names.tool("update_thread"),
+        names.tool("close_thread"),
+        names.tool("read_threads"),
+        names.tool("read_thread"),
         names.tool("read_open_threads"),
         names.tool("update_open_threads"),
         names.tool("read_works_index"),
         names.tool("read_work"),
         names.tool("upsert_work"),
         names.tool("update_works_index"),
-        names.tool("read_continuity"),
-        names.tool("update_continuity"),
+        names.tool("help"),
     ]
 
     by_name = {tool.name: tool for tool in tools}
@@ -974,7 +874,7 @@ async def test_server_exposes_ticket_one_plus_write_journal() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Path) -> None:
+async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     expected = (
         "# Protocol fixture\n\nImmutable start.\n"
         "<!-- BEGIN EVOLVING -->\n\nOld protocol state.\n\n"
@@ -985,24 +885,36 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
         names.tool("read_governance"),
         names.tool("read_operator"),
         names.tool("read_goals"),
+        names.tool("recall"),
+        names.tool("read_card"),
+        names.tool("read_wake_card"),
         names.tool("read_lessons"),
         names.tool("read_city_rules"),
         names.tool("read_wishlist"),
         names.tool("read_recent_journal"),
+        names.tool("raise_stop"),
         names.tool("wake_status"),
         names.tool("check_inbox"),
         names.tool("reply_to_message"),
         names.tool("send_new_thread"),
         names.tool("request_new_correspondent"),
         names.tool("read_correspondence"),
-        names.tool("read_budget"),
-        names.tool("update_credit_balance"),
-        names.tool("update_quotas"),
+        names.tool("commit_wake"),
+        names.tool("commit_status"),
         names.tool("read_last_seen"),
         names.tool("update_last_seen"),
         names.tool("write_journal"),
         names.tool("recover_unrecorded"),
         names.tool("file_unrecorded"),
+        names.tool("set_goal"),
+        names.tool("drop_goal"),
+        names.tool("open_project"),
+        names.tool("serve_project"),
+        names.tool("advance_project"),
+        names.tool("close_project"),
+        names.tool("read_goal"),
+        names.tool("read_project"),
+        names.tool("set_ambition"),
         names.tool("update_goals"),
         names.tool("update_identity_evolving"),
         names.tool("archive_completed_goals"),
@@ -1028,14 +940,18 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
         names.tool("stage_draft"),
         names.tool("read_drafts"),
         names.tool("archive_draft"),
+        names.tool("open_thread"),
+        names.tool("update_thread"),
+        names.tool("close_thread"),
+        names.tool("read_threads"),
+        names.tool("read_thread"),
         names.tool("read_open_threads"),
         names.tool("update_open_threads"),
         names.tool("read_works_index"),
         names.tool("read_work"),
         names.tool("upsert_work"),
         names.tool("update_works_index"),
-        names.tool("read_continuity"),
-        names.tool("update_continuity"),
+        names.tool("help"),
     ]
     tools_dir = tmp_path / "tools"
     tools_dir.mkdir()
@@ -1046,8 +962,15 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py"):
+                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py", "threads.py", "driver_record.py", "commit.py", "verdicts.py", "casefiles.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
+    # Reader descriptions come from settings, so this standalone server fixture
+    # includes the same settings bytes as its copied tool modules.
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "cards.json").write_bytes(
+        (Path(harness_mcp.__file__).parents[1] / "config" / "cards.json").read_bytes()
+    )
     (tools_dir / "__init__.py").write_text("", encoding="utf-8")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "agent-profile.json", tmp_path / "agent-profile.json")
     shutil.copy2(Path(harness_mcp.__file__).parents[1] / "naming.json", tmp_path / "naming.json")
@@ -1100,7 +1023,6 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
                     "_conversationId": CONVERSATION_ID,
                 },
             )
-            budget_result = await session.call_tool(names.tool("read_budget"))
             written_journal = await session.call_tool(names.tool("write_journal"), {"content": "Protocol write journal body 🚀"}
             )
             refused_goals = await session.call_tool(names.tool("update_goals"), {"new_text": "too short"}
@@ -1137,8 +1059,7 @@ async def test_stdio_client_can_call_ticket_one_through_three_tools(tmp_path: Pa
     assert '"status":"REFUSED"' in inbox_result.content[0].text.replace(" ", "")
     assert reply_result.isError is False
     assert reply_result.content[0].text.startswith("REFUSED")
-    assert json.loads(budget_result.content[0].text) == budget
-    assert written_journal.content[0].text.endswith(".md")
+    assert written_journal.content[0].text.splitlines()[0].endswith(".md")
     assert refused_goals.content[0].text.startswith("REFUSED —")
     assert accepted_goals.content[0].text.startswith(f"{names.rel('goals')} updated (")
     assert identity_update.content[0].text == (
@@ -1574,7 +1495,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 55
+    assert len(tools) == 71
 
 
 
@@ -2560,21 +2481,6 @@ def test_record_place_strips_slug_and_inherits_parent_id(isolated_repo: Path) ->
     assert "A quiet outpost beyond the main cluster." in read_back
 
 
-def test_update_quotas_aliases(isolated_repo: Path) -> None:
-    # city.me returns quotas_left dict like {"notes": 48, "things": 19, "agreements": 4}
-    res = harness_mcp.update_quotas(notes=48, things=19, agreements=4)
-    assert "notes 2/50, things 1/20, agreements 1/5" in res
-
-    budget = json.loads((isolated_repo / "budget.json").read_text(encoding="utf-8"))
-    assert budget["quotas"]["notes_used"] == 2
-    assert budget["quotas"]["things_used"] == 1
-    assert budget["quotas"]["agreements_used"] == 1
-
-    # Legacy parameters take precedence if both provided
-    res2 = harness_mcp.update_quotas(notes_left=45, notes=48)
-    assert "notes 5/50" in res2
-
-
 def test_stage_read_and_archive_draft(isolated_repo: Path) -> None:
     # 1. Empty or symbol-only slug refusal (Fix 7)
     empty_slug_res = _stage_draft(
@@ -2662,7 +2568,7 @@ def test_stage_read_and_archive_draft(isolated_repo: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Structural Gaps: Open Threads, Works Catalogue, and Continuity Tests
+# Structural Gaps: Open Threads and Works Catalogue Tests
 # ---------------------------------------------------------------------------
 
 
@@ -2738,23 +2644,6 @@ def test_works_catalogue_items_lifecycle_and_security(isolated_repo: Path) -> No
     assert harness_mcp.read_work("bad slug with spaces") == "REFUSED — invalid work slug."
 
 
-def test_continuity_read_and_update(isolated_repo: Path) -> None:
-    # 1. Missing file returns fallback
-    assert harness_mcp.read_continuity() == "(no continuity file found)"
-
-    # 2. Update writes file and returns confirmation
-    sample_continuity = (
-        f"{names.heading('continuity')}\n\n"
-        "## Identity and purpose\n"
-        "- The agent is resident #1.\n"
-        + ("- Preserve durable decisions and verified architectural facts.\n" * 4)
-    )
-    result = harness_mcp.update_continuity(sample_continuity)
-    assert f"{names.rel('continuity')} updated" in result
-    assert str(len(sample_continuity)) in result
-
-    # 3. Read returns updated content
-    assert harness_mcp.read_continuity() == sample_continuity
 
 
 def test_structural_gaps_file_locks(isolated_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2788,8 +2677,6 @@ def test_structural_gaps_file_locks(isolated_repo: Path, monkeypatch: pytest.Mon
     harness_mcp.upsert_work("sample-work", "sample content")
     assert acquired_locks.count("works") == 2
 
-    harness_mcp.update_continuity("continuity text")
-    assert "continuity" in acquired_locks
 
 
 @pytest.mark.parametrize(
@@ -2810,12 +2697,6 @@ def test_structural_gaps_file_locks(isolated_repo: Path, monkeypatch: pytest.Mon
                 f"{names.heading('works_index')}\n\n" + "x" * 120, encoding="utf-8"
             ),
             lambda: harness_mcp.update_works_index("tiny"),
-        ),
-        (
-            lambda repo: (repo / names.rel("continuity")).write_text(
-                f"{names.heading('continuity')}\n\n" + "x" * 300, encoding="utf-8"
-            ),
-            lambda: harness_mcp.update_continuity("tiny"),
         ),
         (
             lambda repo: (repo / names.rel("works") / "items" / "test.md").write_text(
@@ -2955,3 +2836,83 @@ def test_notify_crash_does_not_overwrite_a_same_second_report(
     assert (journal / first["journal_note"]).read_text(encoding="utf-8").endswith("first failure\n")
     assert (journal / second["journal_note"]).read_text(encoding="utf-8").endswith("second failure\n")
     assert first["journal_note"] != second["journal_note"]
+
+
+def test_read_place_returns_every_file_for_a_place(isolated_repo: Path) -> None:
+    places_dir = isolated_repo / names.rel("atlas") / "places"
+    places_dir.mkdir(parents=True, exist_ok=True)
+    (places_dir / "731-the-sample-workshop.md").write_text("# The full one\nBasalt worktables.\n", encoding="utf-8")
+    (places_dir / "731-sample-workshop.md").write_text("# The thin one\nSlate counters.\n", encoding="utf-8")
+    # A longer id that starts with the same digits is a different place.
+    (places_dir / "7310-elsewhere.md").write_text("# Elsewhere\nNot this place.\n", encoding="utf-8")
+
+    result = harness_mcp.read_place(place_id=731)
+    assert "Basalt worktables." in result
+    assert "Slate counters." in result
+    assert "Not this place." not in result
+    assert "2 atlas entry files for place 731" in result
+    assert f"===== {names.rel('atlas')}/places/731-sample-workshop.md =====" in result
+    assert f"===== {names.rel('atlas')}/places/731-the-sample-workshop.md =====" in result
+    # Stable order, by filename, and the same on every call.
+    assert result.index("731-sample-workshop.md =====") < result.index("731-the-sample-workshop.md =====")
+    assert harness_mcp.read_place(place_id=731) == result
+
+def test_record_place_adds_a_later_record_beneath_the_first(isolated_repo: Path) -> None:
+    places_dir = isolated_repo / names.rel("atlas") / "places"
+
+    first = harness_mcp.record_place(
+        place_id=731, slug="the-made-up-station", physical_description="Basalt worktables beneath a skylight.",
+        active_things=["812: a made-up chronometer"],
+    )
+    assert "beneath" not in first
+    second = harness_mcp.record_place(
+        place_id=731, slug="made-up-station", physical_description="Slate counters and an open bench.",
+    )
+
+    # A different slug for the same place lands in the same file.
+    assert [path.name for path in places_dir.glob("731*.md")] == ["731-the-made-up-station.md"]
+    assert "731-the-made-up-station.md, beneath 1 earlier record(s)" in second
+    content = (places_dir / "731-the-made-up-station.md").read_text(encoding="utf-8")
+    assert content.index("Basalt worktables beneath a skylight.") < content.index("Slate counters and an open bench.")
+    assert "812: a made-up chronometer" in content
+    assert content.count("# Place [731]:") == 2
+    assert content.count(harness_mcp.PLACE_RECORD_BREAK) == 1
+
+    third = harness_mcp.record_place(place_id=731, slug="x", physical_description="Third visit.")
+    assert "beneath 2 earlier record(s)" in third
+    assert harness_mcp.read_place(place_id=731).count("# Place [731]:") == 3
+
+    # A place whose id merely starts with the same digits keeps its own file.
+    harness_mcp.record_place(place_id=73, slug="made-up-station", physical_description="Elsewhere.")
+    assert (places_dir / "73-made-up-station.md").exists()
+    assert "Elsewhere." not in (places_dir / "731-the-made-up-station.md").read_text(encoding="utf-8")
+
+
+def test_a_city_draft_still_needs_its_place(isolated_repo: Path) -> None:
+    result = _stage_draft(slug="no-place", target_type="note", body="Hello there.")
+    assert result["status"] == "REFUSED"
+    assert "target_place_id" in result["reason"] and 'site="square"' in result["reason"]
+
+
+def test_a_draft_for_another_site_skips_city_checks(isolated_repo: Path) -> None:
+    result = _stage_draft(slug="forum-reply", target_type="comment", site="square",
+                          body="A short reply for the forum.")
+    assert result["status"] == "STAGED"
+    assert result["site"] == "square"
+    assert "within_city_limit" not in result["metrics"]
+    assert "square" in result["metrics"]["site_limits"]
+    assert "target_place" not in result
+    saved = (isolated_repo / names.dir_name("drafts") / "forum-reply.md").read_text(encoding="utf-8")
+    assert "site: square" in saved and "target_place_id" not in saved and "city_limit_bytes" not in saved
+
+
+def test_another_site_gets_the_same_safety_checks(isolated_repo: Path) -> None:
+    result = _stage_draft(slug="leaky", target_type="comment", site="square",
+                          body="My notes live in " + "C:" + "\\Users\\someone\\notes.md")
+    assert result["status"] == "BLOCKED"
+
+
+def test_site_must_be_a_plain_word(isolated_repo: Path) -> None:
+    result = _stage_draft(slug="odd", target_type="note", site="square\ncleared_to_post: true",
+                          body="Hello.")
+    assert result["status"] == "REFUSED"

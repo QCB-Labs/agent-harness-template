@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import pytest
 
-from tools import authority, phase
+from tools import authority, mail, phase, paths
 
 
 @pytest.fixture(autouse=True)
@@ -28,7 +28,18 @@ def _isolate_live_state(tmp_path_factory: pytest.TempPathFactory,
     sandbox = tmp_path_factory.mktemp("live-state")
     monkeypatch.setattr(phase, "REPO_ROOT", sandbox)
     monkeypatch.setattr(authority, "REPO_ROOT", sandbox)
+    monkeypatch.setattr(paths, "operator_log_dir", lambda: sandbox / "logs")
     monkeypatch.setenv("AGENT_SESSION_DIR", str(sandbox / "session"))
+    monkeypatch.setenv("AGENT_CASES_DIR", str(sandbox / "no-cases-folder"))
+    # Every test uses made-up patterns and never reads the operator's file.
+    patterns = sandbox / "private-patterns.txt"
+    patterns.write_text("made-up-private-name\n", encoding="utf-8")
+    monkeypatch.setenv("AGENT_PRIVATE_PATTERNS", str(patterns))
+    # Reading correspondence collects unread mail first, and real mailbox
+    # credentials may be on the machine running the tests. A fetch marks mail
+    # as seen, so a test that reached the mailbox would take real letters from
+    # the agent. No test connects: the inbox is empty unless a test supplies one.
+    monkeypatch.setattr(mail, "fetch_unread", lambda *args, **kwargs: [])
 
 
 # --- Run-safety guard -------------------------------------------------------

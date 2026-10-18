@@ -1,0 +1,91 @@
+{
+  "recall_bytes": 16000,
+  "wake_card_bytes": 44000,
+  "wake_sections": {
+    "what_i_was_doing": 13000,
+    "what_i_owe": 1600,
+    "thread_index": 4800,
+    "rules": 2400,
+    "what_needs_checking": 1200,
+    "whats_here": 400
+  },
+  "recall_history_bytes": 6000,
+  "plan_heading": "(?im)^(#{1,6}) .*\\bplan next\\b.*$",
+  "log_first_heading": "(?im)^(#{1,6}) Waiting, Due, Deferred and (?:Done|Resolved)\\s*$",
+  "log_observations_heading": "(?im)^(#{1,6}) Observations\\s*$",
+  "wake_log_bytes": 5000,
+  "recall_answer_bytes": 24000,
+  "recall_left_out_listed": 12,
+  "threads": {
+    "file": "# {title}\n\n- **Status:** open\n\n## Where it stands\n\n{stands}\n\n## Updates\n\n",
+    "stands_heading": "(?m)^## Where it stands\\r?\\n",
+    "updates_heading": "(?m)^## Updates\\r?\\n",
+    "open_status": "(?m)^- \\*\\*Status:\\*\\* open(?=\\r?$)",
+    "closed_status": "- **Status:** closed in {wake}, {date}: {text}",
+    "closed_pattern": "(?m)^- \\*\\*Status:\\*\\* closed in {wake_prefix}([0-9]+),",
+    "dated_entry": "(?m)^- \\*\\*(\\d{4}-\\d{2}-\\d{2}) \\({wake_prefix}([0-9]+)\\):\\*\\*",
+    "update": "- **{date} ({wake}):** {text}\n",
+    "index_bytes": 6000,
+    "index_line": "{title} — {date}; {bytes} bytes.",
+    "no_updates": "no updates",
+    "closed_count": "Closed threads: {count}.",
+    "omitted": "{count} more open threads are not shown; the next are at read_threads(start={next}).",
+    "earlier": "Earlier closings: {wakes}.",
+    "wake_line": "- {title} [{tags}]",
+    "wake_omitted": "{count} more open threads are not listed; read_threads().",
+    "archive_heading": "\n## Moved by the operator on {date}: finished threads, as they stood in {legacy_name}\n\n",
+    "move_comment": "<!-- Moved by the operator on {date} from {legacy_name}, unchanged. -->\n",
+    "resolved_heading": "(?i)^## Resolved threads\\s*$",
+    "list_error": "Nothing was changed: list title {title} matches {count} entries.",
+    "archive_noop": "Moved 0 entries and 0 bytes: the listed entries were already archived; nothing was changed.",
+    "archive_result": "Moved {count} entries and {bytes} bytes.",
+    "split_noop": "Wrote 0 thread files: the old file is absent; nothing was changed.",
+    "resolved_error": "Nothing was changed: resolved entry {title} remains in the old file.",
+    "split_collision": "Nothing was changed: {first} and {second} have the same slug.",
+    "split_exists": "Nothing was changed: {path} already exists.",
+    "split_result": "Wrote {count} thread files and {bytes} bytes.",
+    "check_error": "Entry {title} is not accounted for exactly once with its original bytes.",
+    "check_result": "All {count} entries accounted for.",
+    "errors": {
+      "title": "the title must be a non-empty single line",
+      "slug": "the title has no letters or digits for a file name",
+      "collision": "the file name {filename} belongs to {title}",
+      "stands": "stands must be a string",
+      "update": "update must be a string",
+      "exists": "an open thread already has that title",
+      "missing": "no open thread has that title",
+      "shape": "the file has no open status or required sections",
+      "closure": "how_it_closed must be a non-empty single line",
+      "closed_in": "closed_in must be empty or a closing such as SR-0152 or SR-0152-2",
+      "closed_shape": "the closed thread file has no wake number",
+      "closing_missing": "no thread with that title closed in that wake",
+      "any_missing": "no open or closed thread has that title",
+      "start": "start must be a whole number from 1 to the number of open threads"
+    },
+    "page_heading": "Open threads {first} to {last} of {total}.",
+    "suggestion_limit": 5,
+    "suggestions": {
+      "open_one": "no open thread has that exact title; one open title contains it: {title}",
+      "open_many": "no open thread has that exact title; {count} open titles contain it: {titles}",
+      "closed_one": "no closed thread has that exact title; one closed title contains it: {title}",
+      "closed_many": "no closed thread has that exact title; {count} closed titles contain it: {titles}",
+      "more": "; {more} more are not named"
+    },
+    "suggestion_calls": {
+      "update_thread": "update_thread(title={title}, update=\"<what happened>\")",
+      "close_thread": "close_thread(title={title}, how_it_closed=\"<one line>\")",
+      "read_thread": "read_thread(title={title}, closed_in={closed_in})"
+    },
+    "read_threads_description": "Lists open thread titles, newest update dates and byte sizes, then counts closed threads; start selects the first position shown.",
+    "read_thread_description": "Returns the open thread or latest closing in full; closed_in selects a closing such as SR-0152 or SR-0152-2.",
+    "help_examples": {
+      "read_threads": {
+        "start": 1
+      },
+      "read_thread": {
+        "title": "<title>",
+        "closed_in": "SR-0152-2"
+      }
+    }
+  }
+}

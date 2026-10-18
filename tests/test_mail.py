@@ -223,6 +223,10 @@ def inbox(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(
         harness_mcp, "get_agent_email", lambda: ("bot@example.com", "pw")
     )
+    # No test reaches a real mailbox: an empty inbox unless a test supplies one.
+    monkeypatch.setattr(
+        harness_mcp.mail_module, "fetch_unread", lambda address, password, **kw: []
+    )
     return tmp_path
 
 
@@ -386,6 +390,50 @@ def test_blocked_inbox_does_not_block_already_filed_approved_mail(inbox):
         "operator", conversation_id=CONVERSATION_ID
     )
     assert "approved private note" in correspondence
+
+
+def test_blocked_inbox_still_collects_operator_and_peer_mail(inbox, monkeypatch):
+    """A wake that starts inside another conversation's safety interval skips
+    check_inbox. Operator mail waiting on the server must still be collected
+    when correspondence is read. It once was not, and a letter from the
+    operator went unseen."""
+    other = "22222222-2222-4222-8222-222222222222"
+    phase._record_private_use(other)
+    _inbox_returns(monkeypatch, build("a letter sent before the wake", sender="operator@example.com"))
+
+    assert "BLOCKED" in harness_mcp.wake_status(conversation_id=CONVERSATION_ID)
+    listing = harness_mcp.read_correspondence(conversation_id=CONVERSATION_ID)
+    assert listing.startswith("Collected 1 new message(s) from the mail server.")
+    assert "operator: 1 message(s)" in listing
+
+    _inbox_returns(monkeypatch)
+    letter = harness_mcp.read_correspondence("operator", conversation_id=CONVERSATION_ID)
+    assert "a letter sent before the wake" in letter
+    assert not letter.startswith("Collected")
+
+
+def test_read_correspondence_survives_a_failed_collection(inbox, monkeypatch):
+    parsed = mail.parse_message(build("already filed", sender="operator@example.com"))
+    mail.file_message(parsed, repo=inbox)
+
+    def boom(*args, **kwargs):
+        raise OSError("invented network failure for pw")
+
+    monkeypatch.setattr(harness_mcp.mail_module, "fetch_unread", boom)
+    result = harness_mcp.read_correspondence("operator", conversation_id=CONVERSATION_ID)
+    assert result.startswith("New mail could not be collected (OSError).")
+    assert "already filed" in result and "pw" not in result.split("\n\n")[0]
+
+
+def test_read_correspondence_collects_nothing_under_a_stop_marker(inbox, monkeypatch):
+    (inbox / "STOP.md").write_text("# Stop marker\n\nReason:\ninvented\n", encoding="utf-8")
+
+    def forbidden_fetch(*args, **kwargs):
+        raise AssertionError("a standing stop must not collect mail")
+
+    monkeypatch.setattr(harness_mcp.mail_module, "fetch_unread", forbidden_fetch)
+    result = harness_mcp.read_correspondence(conversation_id=CONVERSATION_ID)
+    assert "could not be collected" not in result
 
 
 def test_wake_status_reports_without_changing_state(inbox):

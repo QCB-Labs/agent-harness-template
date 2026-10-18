@@ -107,6 +107,50 @@ def correspondents_path() -> Path:
     return trust_anchor_dir() / "correspondents.json"
 
 
+def inside_repo(path: Path, also: Path | None = None) -> bool:
+    """True if ``path`` resolves inside the code repository, or inside
+    ``also`` (the harness's active data repository, when it differs)."""
+    resolved = Path(path).resolve()
+    for root in (REPO_ROOT, also):
+        if root is None:
+            continue
+        root = Path(root).resolve()
+        if resolved == root or root in resolved.parents:
+            return True
+    return False
+
+
+def cases_dir(also_outside: Path | None = None) -> Path | None:
+    """The operator's private casefile folder, or None (casefiles off).
+
+    AGENT_CASES_DIR if set, else the first line of cases-dir.txt in the
+    trust anchor (admin-writable, so the agent can't redirect it). The
+    folder must exist and lie outside the code repository and outside
+    ``also_outside`` (the active data repository); it is never created
+    here. Nothing in the repository names it.
+    """
+    raw = os.environ.get("AGENT_CASES_DIR")
+    if not raw:
+        pointer = trust_anchor_dir() / "cases-dir.txt"
+        try:
+            lines = pointer.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeError):
+            return None
+        raw = lines[0].strip() if lines else ""
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_dir() or inside_repo(path, also=also_outside):
+        return None
+    return path.resolve()
+
+
+def operator_log_dir() -> Path:
+    """Where the harness logs what only the operator should read: beside the
+    session folder, outside the repository."""
+    return session_dir().parent / "logs"
+
+
 def assert_outside_repo(path: Path) -> None:
     """Raise if a trust-anchor path resolves inside the repository.
 

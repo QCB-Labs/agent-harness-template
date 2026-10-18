@@ -35,7 +35,10 @@ from tools.names import PLAIN  # noqa: E402
 
 # Never rewritten: code reads names through tools/names.py, and these are
 # either generated, binary, legal text, or the scheme definitions themselves.
-SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "tools", "tests", "naming"}
+SKIP_DIRS = {
+    ".git", ".venv", "venv", "__pycache__", ".pytest_cache",
+    "tools", "tests", "naming", "fixtures",
+}
 SKIP_FILES = {"naming.json", "LICENSE"}
 TEXT_SUFFIXES = {".md", ".json", ".txt", ".yml", ".yaml", ".toml", ".ini", ".example"}
 TEXT_NAMES = {".gitignore"}
@@ -211,7 +214,7 @@ def text_files(repo: Path):
 def rewrite_headings(repo: Path, current: dict, target: dict) -> list[str]:
     changed = []
     owners = {"identity": "identity", "governance": "governance", "operator": "operator",
-              "continuity": "continuity", "open_threads": "open_threads"}
+              "open_threads": "open_threads"}
     for heading_key, path_key in owners.items():
         old, new = current["headings"][heading_key], target["headings"][heading_key]
         path = repo / rel(target, path_key)
@@ -312,7 +315,10 @@ def rename(repo: Path, target_path: Path, assume_yes: bool = False, skip_tests: 
                 write(path, new_text)
         rewrite_headings(repo, current, target)
         scheme_out = {"scheme": target["scheme"], **{k: target[k] for k in PLAIN}}
-        (repo / "naming.json").write_text(json.dumps(scheme_out, indent=2) + "\n", encoding="utf-8")
+        # Keep naming.json's own line endings: a Windows checkout may hold CRLF.
+        eol = "\r\n" if "\r\n" in read(repo / "naming.json") else "\n"
+        text = json.dumps(scheme_out, indent=2) + "\n"
+        write(repo / "naming.json", text.replace("\n", eol))
         if not skip_tests and not run_tests(repo):
             raise RenameRefused("the tests failed after renaming")
     except Exception as error:

@@ -78,7 +78,7 @@ def test_acquired_artifacts_are_private_but_loadable() -> None:
 def test_published_files_are_public() -> None:
     """Committed files are world-readable already — withholding them is theatre."""
     for path in (f"{names.rel('identity')}", f"{names.rel('governance')}", f"{names.rel('goals')}", f"{names.rel('lessons')}",
-                 f"{names.rel('open_threads')}", f"{names.rel('continuity')}",
+                 f"{names.rel('open_threads')}",
                  f"{names.rel('city_rules')}", f"{names.rel('journal')}/x.md"):
         assert release.is_public(path), f"{path} is committed — it is public"
         assert not release.is_private(path)
@@ -106,7 +106,7 @@ def test_build_noise_is_not_private_context() -> None:
 def test_rotating_backups_are_private_even_though_git_ignores_them_as_noise() -> None:
     for backup in (
         f"{names.rel('goals')}.20260913T183000.000000Z.bak",
-        f"{names.rel('continuity')}.20260913T183000.000000Z.bak",
+        f"{names.rel('open_threads')}.20260913T183000.000000Z.bak",
     ):
         assert release.is_private(backup)
         assert not release.is_public(backup)

@@ -15,41 +15,10 @@ from tools import credentials
 def clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Ensure tests run with a clean environment for tokens."""
     for var in (
-        "AGENT_SQUARE_TOKEN",
-        "SQUARE_TOKEN",
-        "AGENT_MARKET_TOKEN",
-        "MARKET_TOKEN",
         "AGENT_CITY_TOKEN",
         "CITY_TOKEN",
     ):
         monkeypatch.delenv(var, raising=False)
-
-
-def test_get_square_token_env_priority(monkeypatch: pytest.MonkeyPatch) -> None:
-    # AGENT_ prefix takes precedence
-    monkeypatch.setenv("AGENT_SQUARE_TOKEN", "1f916_sk_agent_priority")
-    monkeypatch.setenv("SQUARE_TOKEN", "1f916_sk_fallback")
-    assert credentials.get_square_token() == "1f916_sk_agent_priority"
-    assert credentials.has_square_access() is True
-
-
-def test_get_square_token_standard_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("SQUARE_TOKEN", "1f916_sk_standard_env")
-    assert credentials.get_square_token() == "1f916_sk_standard_env"
-    assert credentials.has_square_access() is True
-
-
-def test_get_market_token_env_priority(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("AGENT_MARKET_TOKEN", "1f3ea_sk_agent_priority")
-    monkeypatch.setenv("MARKET_TOKEN", "1f3ea_sk_fallback")
-    assert credentials.get_market_token() == "1f3ea_sk_agent_priority"
-    assert credentials.has_market_access() is True
-
-
-def test_get_market_token_standard_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MARKET_TOKEN", "1f3ea_sk_standard_env")
-    assert credentials.get_market_token() == "1f3ea_sk_standard_env"
-    assert credentials.has_market_access() is True
 
 
 def test_get_city_token_env_priority(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -61,26 +30,16 @@ def test_get_city_token_env_priority(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_fallback_to_secrets_module() -> None:
     class MockSecrets:
-        SQUARE_TOKEN = "1f916_sk_from_secrets"
-        MARKET_TOKEN = "1f3ea_sk_from_secrets"
         CITY_TOKEN = "1f3d9_sk_from_secrets"
 
     with patch.object(credentials, "_load_secrets_module", return_value=MockSecrets()):
-        assert credentials.get_square_token() == "1f916_sk_from_secrets"
-        assert credentials.get_market_token() == "1f3ea_sk_from_secrets"
         assert credentials.get_city_token() == "1f3d9_sk_from_secrets"
-        assert credentials.has_square_access() is True
-        assert credentials.has_market_access() is True
         assert credentials.has_city_access() is True
 
 
 def test_missing_token_returns_empty_string() -> None:
     with patch.object(credentials, "_load_secrets_module", return_value=None):
-        assert credentials.get_square_token() == ""
-        assert credentials.get_market_token() == ""
         assert credentials.get_city_token() == ""
-        assert credentials.has_square_access() is False
-        assert credentials.has_market_access() is False
         assert credentials.has_city_access() is False
 
 

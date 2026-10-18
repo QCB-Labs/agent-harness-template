@@ -75,3 +75,4 @@ operator_private.pem
 
 # Operator private details checked by the commit hooks — never commit
 hooks/private-patterns.txt
+fixtures/private/

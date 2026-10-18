@@ -12,18 +12,6 @@
       "headers": {
         "Authorization": "Bearer 1f3d9_sk_PLACEHOLDER"
       }
-    },
-    "square": {
-      "command": ".venv\\Scripts\\python.exe",
-      "args": [
-        "tools/square_mcp.py"
-      ]
-    },
-    "market": {
-      "command": ".venv\\Scripts\\python.exe",
-      "args": [
-        "tools/market_mcp.py"
-      ]
     }
   }
 }
