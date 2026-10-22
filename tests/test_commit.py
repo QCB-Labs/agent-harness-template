@@ -8,7 +8,7 @@ import time
 
 import pytest
 
-from tools import commit, harness_mcp as h, release
+from tools import commit, harness_mcp as h, release, names
 
 
 def git(root, *arguments):
@@ -554,3 +554,40 @@ def test_status_warning_does_not_hide_first_changed_file(repo, monkeypatch):
     result = h.commit_wake(files=["changed.txt"], summary="Store fixture change")
     assert result["status"] == "COMMITTED", result
     assert "changed.txt" in result["files"]
+
+
+# --- Files a wake left behind ---------------------------------------------
+
+def test_this_wakes_log_goes_along_unnamed(repo):
+    (repo / (names.rel("journal") + '/2026-10')).mkdir(parents=True)
+    (repo / (names.rel("journal") + f'/2026-10/{names.wake_id(150)}-2026-10-20.md')).write_text('log\n')
+    (repo / (names.rel("journal") + f'/2026-10/{names.wake_id(149)}-2026-10-19.md')).write_text('older\n')
+    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    assert result['status'] == 'COMMITTED'
+    assert (names.rel("journal") + f'/2026-10/{names.wake_id(150)}-2026-10-20.md') in result['harness_files']
+    assert (names.rel("journal") + f'/2026-10/{names.wake_id(150)}-2026-10-20.md') in _committed(repo)
+    assert (names.rel("journal") + f'/2026-10/{names.wake_id(149)}-2026-10-19.md') not in _committed(repo)
+
+
+def test_his_unnamed_files_are_reported_not_swept_in(repo):
+    (repo / names.memory('goals')).mkdir(parents=True)
+    (repo / names.memory('goals/new-goal.md')).write_text('goal\n')
+    (repo / names.rel('goals_archive')).write_text('archive\n')
+    (repo / names.memory('private')).mkdir(parents=True)
+    (repo / names.memory('private/secret.txt')).write_text('private\n')
+    (repo / 'other.txt').write_text('not his\n')
+    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    assert result['status'] == 'COMMITTED'
+    assert result['left_uncommitted'] == sorted([names.rel('goals_archive'), names.memory('goals/new-goal.md')])
+    assert ', '.join(sorted([names.rel('goals_archive'), names.memory('goals/new-goal.md')])) in result['note']
+    assert f'harness.{names.tool("commit_wake")}(files=' in result['note']
+    assert not _committed(repo) & {names.rel('goals_archive'), names.memory('goals/new-goal.md'), 'other.txt'}
+    again = h.commit_wake(files=[names.rel('goals_archive'), names.memory('goals/new-goal.md')], summary='Record goals')
+    assert again['status'] == 'COMMITTED' and 'left_uncommitted' not in again
+    assert again['message'] == f'{names.wake_id(150)}: Record goals'
+
+
+def test_nothing_left_means_no_note(repo):
+    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    assert result['status'] == 'COMMITTED'
+    assert 'left_uncommitted' not in result and 'note' not in result

@@ -802,3 +802,30 @@ def test_dashes_in_metadata_never_leak_into_the_body(fake_patterns_file, draft_r
     assert body == "A friendly greeting.\n---\nwith a rule in it."
     archived = draft_repo.archive_draft(slug="test-draft", conversation_id=CID)
     assert "published" in archived
+
+
+class _NoSMTP:
+    """Fails the test if anything reaches SMTP."""
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        raise AssertionError("SMTP must not be reached")
+
+
+@pytest.mark.parametrize("scope", ["public", "peer", "mailbag"])
+def test_only_operator_mail_may_carry_a_finding(
+    fake_patterns_file: Path, monkeypatch: pytest.MonkeyPatch, scope: str
+) -> None:
+    from tools import mail
+    monkeypatch.setattr(mail.smtplib, "SMTP", _NoSMTP)
+    with pytest.raises(mail.OutgoingCheckError):
+        mail.send_message("from@example.com", "password", to_address="someone@example.com",
+                          subject="Re: hello", body="Greetings from PrivateMarkerAlpha.", scope=scope)
+
+
+def test_subject_is_checked_with_the_body(
+    fake_patterns_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tools import mail
+    monkeypatch.setattr(mail.smtplib, "SMTP", _NoSMTP)
+    with pytest.raises(mail.OutgoingCheckError):
+        mail.send_message("from@example.com", "password", to_address="peer@example.com",
+                          subject="About PrivateMarkerAlpha", body="A clean body.", scope="peer")

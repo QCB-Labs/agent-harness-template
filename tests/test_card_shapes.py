@@ -75,6 +75,7 @@ def test_cut_and_rebuild_every_byte(memory, tmp_path, kind):
 def test_nonblank_line_occurrences_are_preserved_once(memory, kind):
     source, migrated = memory
     entries = [card for card in migrated if card['origin']['logical'] == kind]
+    assert entries, 'the migration must cut this kind, or the loop below checks nothing'
     for name in {card['origin']['file'] for card in entries}:
         expected = Counter(line for line in (source / name).read_bytes().decode().splitlines() if line.strip())
         actual = Counter(line for card in entries if card['origin']['file'] == name
@@ -85,6 +86,8 @@ def test_nonblank_line_occurrences_are_preserved_once(memory, kind):
 def test_resident_index_is_not_cut_into_cards(memory):
     # By design: the index is the name list the tagger reads, not memory.
     _, migrated = memory
+    # Other resident files are cut, so an empty migration can't pass this.
+    assert [card for card in migrated if card['origin']['logical'] == 'residents']
     assert not [card for card in migrated if card['origin']['file'] == 'memory/residents/index.md']
 
 @pytest.mark.parametrize('kind', KINDS)

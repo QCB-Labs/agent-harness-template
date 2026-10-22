@@ -7,7 +7,7 @@ from pathlib import Path
 import sqlite3
 
 import pytest
-from tools import driver_record as d, harness_mcp as h
+from tools import driver_record as d, harness_mcp as h, names
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime.datetime(2026, 10, 12, 12, tzinfo=datetime.timezone.utc)
@@ -158,3 +158,25 @@ def test_without_labels_every_name_is_shown_as_the_driver_wrote_it(repo):
     (repo / d.SETTINGS).write_text(json.dumps(cfg), encoding='utf-8')
     record(driver(repo) / 'a.db', uri(repo), ['fixture-model-a'] * 3)
     assert 'fixture-model-a (3)' in d.footer(repo)
+
+
+
+@pytest.mark.parametrize('copied', [
+    '\n\n---\nMeasured models: Fixture Model A (98); 98 calls.\n',
+    '\r\n\r\n---\r\nMeasured models: Fixture Model A; 98 calls.\r\n',
+])
+def test_a_footer_the_agent_copied_is_replaced_by_the_measured_one(repo, copied):
+    # A copied footer must not keep the previous count.
+    record(driver(repo) / 'a.db', uri(repo), ['fixture-model-a'] * 5)
+    reply = h.write_journal('# Invented log\n\n## What I Plan Next\nCount spoons.' + copied).splitlines()[0]
+    text = (repo / (names.rel("journal")) / reply).read_text(encoding='utf-8')
+    assert text.count('Measured models:') == 1
+    assert '(5)' in text and '(98)' not in text
+    assert text.startswith('# Invented log\n\n## What I Plan Next\nCount spoons.')
+
+
+def test_his_own_mention_of_model_calls_is_kept(repo):
+    record(driver(repo) / 'a.db', uri(repo), ['fixture-model-a'] * 5)
+    line = 'I wondered how many model calls this wake took.\n'
+    reply = h.write_journal('# Invented log\n\n' + line).splitlines()[0]
+    assert line in (repo / (names.rel("journal")) / reply).read_text(encoding='utf-8')

@@ -747,10 +747,13 @@ def send_message(address: str, password: str, to_address: str, subject: str,
     plain_content = f"{body}\n\n{SIGNATURE}\n"
     html_content = render_html(plain_content) if scope in ("operator", "peer") else None
 
-    findings = check_outgoing(plain_content, html_content)
+    # The subject goes out too, so it is checked with the body.
+    findings = check_outgoing(subject + "\n\n" + plain_content, html_content)
     if findings:
-        kinds = ", ".join(dict.fromkeys(finding.kind for finding in findings))
-        if scope in ("peer", "mailbag"):
+        kinds = ", ".join(dict.fromkeys(f.kind for f in findings))
+        # Only mail to the operator may carry a finding, with a warning on it.
+        # Everyone else is refused: peers, the mailbag, and public (unknown) senders.
+        if scope != SCOPE_OPERATOR:
             raise OutgoingCheckError(f"REFUSED — outgoing check: {kinds}")
 
         warning = f"[outgoing check: {kinds} — review before forwarding]"

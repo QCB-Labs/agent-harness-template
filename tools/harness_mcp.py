@@ -232,6 +232,24 @@ def _recut_after_write(logical: str, path: Path) -> None:
             print("Card sync error could not be logged", file=sys.stderr)
 
 
+def _current_wake_label() -> str:
+    """The wake a read belongs to: the number the next mission log will take."""
+    return names.wake_id(_load_budget().get("wake_count", 0) + 1)
+
+
+SEALED_MARKER = Path(names.memory("private", "sealed-session"))
+
+
+def _session_kind() -> str:
+    """What the read log calls this session: "sealed" while the operator's
+    marker stands (probe sessions, RESEARCH-SPEC section 5), otherwise "wake".
+
+    The harness can't tell a probe from a wake on its own; the operator
+    places the marker before a sealed session and removes it after.
+    """
+    return "sealed" if (REPO / SEALED_MARKER).exists() else "wake"
+
+
 @mcp.tool(name=names.tool("read_identity"))
 def read_identity() -> str:
     """Return the agent's complete identity document."""
@@ -260,13 +278,11 @@ def read_goals() -> str:
 
 
 @mcp.tool(name=names.tool("recall"))
-def recall(
-    tags: list[str],
-    text: str | None = None,
-    kinds: list[str] | None = None,
-    limit: int = 10,
-    history: bool = False,
-) -> dict[str, object]:
+@_bind_host_conversation_id
+def recall(tags: list[str], text: str | None = None,
+           kinds: list[str] | None = None, limit: int = 10,
+           history: bool = False,
+           conversation_id: HostConversationId = None) -> dict[str, object]:
     """Recall live and recheck cards within the configured budget.
 
     history=True uses the whole budget for history, after current cards.
@@ -283,6 +299,9 @@ def recall(
             history=history,
             config_path=REPO / "config" / "cards.json",
             record_read=not stop_marker.marker_present(REPO),
+            wake=_current_wake_label(),
+            conversation=normalize_conversation_id(conversation_id),
+            session=_session_kind(),
         )
 
 
@@ -297,16 +316,26 @@ def _card_id_alias(fn):
 
 @mcp.tool(name=names.tool("read_card"))
 @_card_id_alias
+@_bind_host_conversation_id
 def read_card(card_id: Annotated[str, Field(validation_alias=AliasChoices("card_id", "id"))],
-              history: bool = False) -> dict[str, object]:
+              history: bool = False,
+              conversation_id: HostConversationId = None) -> dict[str, object]:
     """Read a card of any status, with history on request."""
     with _file_lock("cards"):
         _ensure_cards()
-        return cards_module.read_card(REPO / names.dir_name("memory"), card_id, history=history)
+        return cards_module.read_card(
+            REPO / names.dir_name("memory"), card_id, history=history,
+            record_read=not stop_marker.marker_present(REPO),
+            wake=_current_wake_label(),
+            conversation=normalize_conversation_id(conversation_id),
+            session=_session_kind(),
+        )
 
 
 @mcp.tool(name=names.tool("read_wake_card"))
-def read_wake_card(here_tags: list[str] = []) -> dict[str, object]:
+@_bind_host_conversation_id
+def read_wake_card(here_tags: list[str] = [],
+                   conversation_id: HostConversationId = None) -> dict[str, object]:
     """Read the seven-section wake card; content is returned once."""
     with _file_lock("cards"):
         _ensure_cards()
@@ -315,6 +344,10 @@ def read_wake_card(here_tags: list[str] = []) -> dict[str, object]:
             REPO / "naming.json",
             config_path=REPO / "config" / "cards.json",
             here_tags=here_tags,
+            wake=_current_wake_label(),
+            conversation=normalize_conversation_id(conversation_id),
+            record_read=not stop_marker.marker_present(REPO),
+            session=_session_kind(),
         )
 
 
@@ -858,8 +891,10 @@ def commit_wake(files: list[str], summary: str) -> dict:
 
     Name files individually and give a one-line summary without a wake number.
     Files the harness keeps for you (cards, registry, resident index, seen,
-    budget) are added when changed. A name not reported as changed is refused
-    with a list of changed files.
+    budget) are added when they changed, and so is this wake's mission log.
+    A name git does not see as changed is refused with the list of files
+    that did change. After a commit, changed files of yours that were not
+    named are listed under left_uncommitted, with a note.
     If STILL_RUNNING is returned, call commit_status() once before closing.
     """
     return commit_module.commit_wake(REPO, files, summary, _load_budget, _file_lock("commit_wake"))
@@ -912,7 +947,8 @@ def update_last_seen(feed: str, last_id: int | str) -> str:
 
 
 @mcp.tool(name=names.tool("write_journal"))
-def write_journal(content: str) -> str:
+@_bind_host_conversation_id
+def write_journal(content: str, conversation_id: HostConversationId = None) -> str:
     """Write a crash-safe journal entry with wake number and return its path."""
     now = _utc_now()
     journal_dir = REPO / names.rel("journal")
@@ -921,19 +957,12 @@ def write_journal(content: str) -> str:
     month_dir = journal_dir / now.strftime("%Y-%m")
     month_dir.mkdir(parents=True, exist_ok=True)
 
-    # Next wake number. Only persisted after the entry is safely on disk, so a
-    # failed write never burns a number.
-    budget = _load_budget()
-    wake_count = budget.get("wake_count", 0) + 1
-
-    base_name = f"{names.wake_id(wake_count)}-{now.strftime('%Y-%m-%d')}"
-
     # Which models made this wake's calls, counted from the driver's own
     # record. Measured, never asked of the model; absent when nothing is
     # configured or the record cannot be read.
     try:
         from tools import driver_record
-        content += driver_record.footer(REPO)
+        content = driver_record.strip_footers(REPO, content) + driver_record.footer(REPO)
     except Exception:
         pass
 
@@ -942,21 +971,25 @@ def write_journal(content: str) -> str:
     recovery_path = journal_dir / f"{UNRECORDED_PREFIX}{stamp}.md"
     recovery_path.write_text(content, encoding="utf-8")
 
-    journal_path = month_dir / f"{base_name}.md"
-    suffix_number = 1
-    while journal_path.exists():
-        suffix = chr(ord("a") + suffix_number)
-        journal_path = month_dir / f"{base_name}-{suffix}.md"
-        suffix_number += 1
-
+    # The number, the file name, the write and the new count happen under one
+    # lock held across processes, so two sessions can't take the same number.
+    # The count is only persisted after the entry is safely on disk, so a
+    # failed write never burns a number.
     with stop_marker.stop_lock(REPO):
+        budget = _load_budget()
+        wake_count = budget.get("wake_count", 0) + 1
+        base_name = f"{names.wake_id(wake_count)}-{now.strftime('%Y-%m-%d')}"
+        journal_path = month_dir / f"{base_name}.md"
+        suffix_number = 1
+        while journal_path.exists():
+            suffix = chr(ord("a") + suffix_number)
+            journal_path = month_dir / f"{base_name}-{suffix}.md"
+            suffix_number += 1
         journal_path.write_text(content, encoding="utf-8")
         stop_marker.clear_notice(REPO)
+        budget["wake_count"] = wake_count
+        _save_budget(budget)
     recovery_path.unlink()
-
-    budget["wake_count"] = wake_count
-    _save_budget(budget)
-    _recut_after_write("journal", journal_path)
     relative_path = journal_path.relative_to(journal_dir).as_posix()
 
     # After-action report. Sent by the harness, not left to the model, and only
@@ -965,6 +998,16 @@ def write_journal(content: str) -> str:
         subject=f"[{profile.display_name()}] Wake {names.wake_id(wake_count)} after-action report",
         body=content,
     )
+    _recut_after_write("journal", journal_path)
+    # Closed last: the log is written, mailed and cut, so "closed" means the
+    # wake's record is complete.
+    try:
+        cards_module.record_wake_closed(REPO / names.dir_name("memory"), names.wake_id(wake_count),
+                                        normalize_conversation_id(conversation_id),
+                                        session=_session_kind())
+    except Exception:
+        # The read log is research data; it never undoes a written log.
+        print("Read log could not mark the wake closed", file=sys.stderr)
     if mailed is False:
         return f"{relative_path}\n\nThe log is saved. The after-action mail to the operator was not sent."
     return relative_path

@@ -213,7 +213,7 @@ def test_consumed_nonce_cannot_be_replayed(operator) -> None:
 
 
 def test_nonce_ledger_prunes_old_entries(operator) -> None:
-    stale = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime(FMT)
+    stale = (datetime.now(timezone.utc) - authority.NONCE_RETENTION - timedelta(hours=1)).strftime(FMT)
     authority.save_seen_nonces({"old": stale, "new": datetime.now(timezone.utc).strftime(FMT)})
     kept = authority.load_seen_nonces()
     assert "old" not in kept and "new" in kept
@@ -308,3 +308,36 @@ def test_bom_prefixed_public_key_is_accepted(
     monkeypatch.delenv("OPERATOR_PUBLIC_KEY", raising=False)
     monkeypatch.setenv("AGENT_TRUST_DIR", str(anchor))
     assert authority.operator_key_is_installed()
+
+
+def test_editing_the_unsigned_issue_time_does_not_revive_a_session(operator, tmp_path: Path) -> None:
+    _write_session(operator, tmp_path, issued=datetime.now(timezone.utc) - timedelta(hours=13))
+    path = authority.session_token_path()
+    token = json.loads(path.read_text(encoding="utf-8"))
+    token["issued_utc"] = token["last_used_utc"] = datetime.now(timezone.utc).strftime(FMT)
+    path.write_text(json.dumps(token), encoding="utf-8")
+    assert authority.session_active(touch=False) is False
+
+
+def test_nonce_is_remembered_for_the_longest_command_window(operator) -> None:
+    payload = _sign_command(operator, "invent kind 41", hours=72)
+    assert authority.verify_command(payload, consume=True)[0]
+    later = datetime.now(timezone.utc) + timedelta(hours=25)
+    import unittest.mock as mock
+    with mock.patch.object(authority, "_now", return_value=later):
+        valid, _, reason = authority.verify_command(payload)
+    assert not valid and "replay" in reason
+
+
+def test_a_command_used_up_meanwhile_does_not_authorise(operator, tmp_path: Path, monkeypatch) -> None:
+    _drop(operator, "invent kind 42", tmp_path)
+    real = authority.verify_command
+
+    def racing(payload, consume=False):
+        if consume:  # another caller consumed the nonce first
+            real(payload, consume=True)
+        return real(payload, consume=consume)
+
+    monkeypatch.setattr(authority, "verify_command", racing)
+    ok, _ = authority.find_signed_command("invent kind 42", consume=True)
+    assert ok is False

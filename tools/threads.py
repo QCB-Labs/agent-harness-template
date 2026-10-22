@@ -165,16 +165,26 @@ def summaries(root: Path, closed: bool = False) -> list[dict]:
     return sorted(result, key=lambda item: (item['date'], item['wake'], item['title']), reverse=True)
 
 
-def fit_lines(entries: list[str], budget: int, tail, max_lines: int | None = None) -> tuple[str, int]:
-    chosen = []
-    for entry in entries:
-        trial = chosen + [entry]
+def fit_line_indexes(entries: list[str], budget: int, tail, max_lines: int | None = None) -> tuple[str, list[int]]:
+    """Fit lines in order; a line too long is skipped and later ones still tried.
+
+    Returns the text and the positions of the lines it shows, which need not
+    be the first ones.
+    """
+    chosen: list[int] = []
+    for index in range(len(entries)):
+        trial = chosen + [index]
         if max_lines is not None and len(trial) > max_lines:
             break
-        answer = '\n'.join(trial + tail(len(entries) - len(trial)))
+        answer = '\n'.join([entries[i] for i in trial] + tail(len(entries) - len(trial)))
         if len(answer.encode('utf-8')) <= budget:
             chosen = trial
-    return '\n'.join(chosen + tail(len(entries) - len(chosen))), len(chosen)
+    return '\n'.join([entries[i] for i in chosen] + tail(len(entries) - len(chosen))), chosen
+
+
+def fit_lines(entries: list[str], budget: int, tail, max_lines: int | None = None) -> tuple[str, int]:
+    body, chosen = fit_line_indexes(entries, budget, tail, max_lines)
+    return body, len(chosen)
 
 
 def suggest_title(root: Path, title: str, tool: str, closed: bool = False, closed_in: str = '') -> None:
