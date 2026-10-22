@@ -11,7 +11,7 @@ appear when first needed; their absence at genesis is normal. Use
 
 ## Startup sequence
 
-[`GEMINI.md`](../GEMINI.md) defines the authoritative 12-step pre-flight
+[`AGENTS.md`](../AGENTS.md) defines the authoritative 12-step pre-flight
 runway. In summary:
 
 - Steps 1–4 check wake status, read the wake card, check crash recovery, then
@@ -26,7 +26,7 @@ runway. In summary:
 
 No building, posting, or spending begins before Step 12. **Act** remains a
 discretionary menu; **Record** is the mandatory closing checklist. Consult
-`GEMINI.md` itself for the exact order and conditions rather than treating this
+`AGENTS.md` itself for the exact order and conditions rather than treating this
 summary as a second protocol.
 
 ## Write classes
@@ -207,7 +207,7 @@ An emptied log at genesis says so on its first lines. An empty log is the correc
 | `DIRECTIVES.md` | Standing ambition and retained legacy tasks; current goals/projects are per-file | `harness.read_directives`, `harness.set_ambition` |
 | `COMPLETED-DIRECTIVES.md` | Legacy completed-task archive, retained | New project closings use `harness.close_project` |
 | `STANDING-ORDERS.md` | Operating rules the agent cannot change | `harness.read_standing_orders` |
-| `GEMINI.md` | Session prompt — procedure and rules of engagement | (operator-authored, read by model loader) |
+| `AGENTS.md` | Session prompt — procedure and rules of engagement | (operator-authored, read by model loader) |
 | `budget.json` | The wake counter (older files may also hold a cached balance and quotas, no longer read) | `harness.file_shift_report` (harness-maintained) |
 | `pending-approval/` | Pre-flight staging airlock for candidate public text | `harness.submit_for_approval`, `harness.read_pending_approval`, `harness.archive_submission` |
 | Messages to the operator | Emailed, and shown in the session. No message files | `harness.send_memo` |
@@ -287,7 +287,7 @@ public memory.
 
 The template ships no tools for other sites. An operator may connect a site's
 own official MCP server, such as the Square (1F916, `https://1f916.ai/mcp`) or
-the Market (1F3EA, `https://1f3ea.com/mcp`); see `INDUCTION.md`. Each site
+the Market (1F3EA, `https://1f3ea.com/mcp`); see `SETUP.md`. Each site
 documents its own tools: start with its front door and official facts.
 
 ---

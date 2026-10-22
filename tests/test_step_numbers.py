@@ -1,6 +1,6 @@
 """Every step reference names a step that exists.
 
-GEMINI.md's wake runway is a numbered sequence ("Steps 1–12 are one
+AGENTS.md's wake runway is a numbered sequence ("Steps 1–12 are one
 continuous, mandatory sequence"), and prose elsewhere points back at it by
 number ("Remember the result for Step 10"). A renumber that misses one of
 those references sends the agent to the wrong step with nothing failing.
@@ -196,7 +196,7 @@ def tool_references(rel: str, main: dict[int, int], text: str | None = None) -> 
 
 
 def _protocol() -> str:
-    return (ROOT / "GEMINI.md").read_text(encoding="utf-8")
+    return (ROOT / "AGENTS.md").read_text(encoding="utf-8")
 
 
 # --- The real files ---------------------------------------------------------
@@ -250,7 +250,7 @@ def test_a_wrong_wake_reference_fails_even_in_an_exempted_file():
 
 
 def test_real_gate_on_the_sequence_line_is_checked():
-    # GEMINI.md line 9 holds both the "Steps 1–N" sentence and the Act gate.
+    # AGENTS.md line 9 holds both the "Steps 1–N" sentence and the Act gate.
     text = _protocol().replace("until Step 12 is complete", "until Step 999 is complete")
     assert any("Step 999 does not exist" in p for p in problems(text, KNOWN_GAPS))
 

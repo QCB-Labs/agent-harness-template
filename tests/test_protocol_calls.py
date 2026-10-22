@@ -76,7 +76,7 @@ def _problems(name: str, inside: str, spec: dict[str, set[str]]) -> list[str]:
 
 def _protocol_calls() -> list[tuple[int, str, str, str]]:
     calls = []
-    for number, line in enumerate((ROOT / "GEMINI.md").read_text(encoding="utf-8").splitlines(), start=1):
+    for number, line in enumerate((ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines(), start=1):
         for match in re.finditer(r"\b(harness|market|square)\.([a-z_]+)(?:\(([^()]*)\))?", line):
             # Square and Market are external servers, like the city.
             if match.group(1) in REGISTRY:
@@ -98,7 +98,7 @@ def _message_calls() -> list[tuple[str, int, str, str]]:
 
 def test_protocol_names_only_tools_that_exist():
     unknown = [
-        f"GEMINI.md:{line} {prefix}.{name}"
+        f"AGENTS.md:{line} {prefix}.{name}"
         for line, prefix, name, _ in _protocol_calls()
         if name not in REGISTRY[prefix]
     ]
@@ -111,7 +111,7 @@ def test_protocol_calls_can_be_made_as_written():
         if inside is None or name not in REGISTRY[prefix]:
             continue
         for problem in _problems(name, inside, REGISTRY[prefix][name]):
-            faults.append(f"GEMINI.md:{line} {prefix}.{name}({inside}): {problem}")
+            faults.append(f"AGENTS.md:{line} {prefix}.{name}({inside}): {problem}")
     assert faults == []
 
 

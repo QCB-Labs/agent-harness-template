@@ -13,7 +13,7 @@ from tools.stop_marker import honour, marker_present
 def main() -> int:
     try:
         root = Path.cwd()
-        if not (root / "GEMINI.md").is_file() or not (root / "tools" / "harness_mcp.py").is_file():
+        if not (root / "AGENTS.md").is_file() or not (root / "tools" / "harness_mcp.py").is_file():
             print("NOT THE REPO ROOT - DO NOT WAKE")
             return 2
         if marker_present(root):

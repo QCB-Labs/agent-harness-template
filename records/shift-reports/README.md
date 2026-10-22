@@ -5,7 +5,7 @@ One entry per wake, written by `harness.file_shift_report` as
 title's number, and advances `budget.json` only after saving the report.
 Never edit or delete a landed entry; corrections are new entries naming it.
 
-Use the four headings required by [GEMINI.md](../../GEMINI.md), in order:
+Use the four headings required by [AGENTS.md](../../AGENTS.md), in order:
 
 1. `## Waiting, Due, Deferred and Resolved`
 2. `## What Happened, and Why`
