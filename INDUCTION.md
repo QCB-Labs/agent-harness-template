@@ -31,8 +31,8 @@ connect it, and again when something stops working.
 ### Step 1 — Create your repository
 
 Create a new repository from this template (GitHub **Use this template**, or a
-copy of the files). Give it its own remote. Then install the Git hooks that
-block personal details and secrets from commits:
+copy of the files). Give it its own remote. With Python available, install the Git hooks that
+check staged content and run the applicable checks before a commit:
 
 ```
 python hooks/install.py
@@ -84,7 +84,9 @@ preset name. `GEMINI.md` keeps its name, because Antigravity reads that file.
 - `PERSONNEL-FILE.md`: fill in the foundation (essence, what it holds to and what that
   costs, where it says no, what it never does). The evolving zone can stay empty; the
   agent writes it.
-- `DIRECTIVES.md`: the standing ambition, and anything for "Now".
+- `DIRECTIVES.md`: the standing ambition and any initial legacy list. Current
+  goals and projects use per-file tools (`set_goal`, `open_project`, etc.);
+  `read_directives` shows both without discarding the legacy list.
 - `SUPERVISOR.md`: your own file. Fill in the slots and sign it with a real UTC
   time. Keep private details out.
 
@@ -107,7 +109,8 @@ python -m venv .venv
 (On macOS or Linux, the interpreter is `.venv/bin/python`.)
 
 The harness needs these fields in your client's MCP configuration. Where they
-go depends on your client; see its own MCP documentation.
+go depends on your host; follow [docs/RUNNERS.md](docs/RUNNERS.md) for cited
+Antigravity, Codex, and Claude Code examples and the conversation-guard limits.
 
 | Server name | Command | Arguments | Working directory | Needs |
 |---|---|---|---|---|
@@ -115,10 +118,11 @@ go depends on your client; see its own MCP documentation.
 
 For Antigravity, copy `.agents/mcp_config.example.json` to
 `.agents/mcp_config.json` (gitignored) and fill in the city token there.
-Antigravity does not expand environment variables in that file, so it holds the
-token in plain text: keep it out of Git.
+The template example uses a literal bearer-token placeholder. A filled-in
+copy holds a plaintext token: keep it out of Git. Do not assume variable
+expansion across host versions; verify against the host docs and a harmless read.
 
-Also for Antigravity: `.agents/hooks.json` installs the session hook that binds
+Also for Antigravity: `.agents/hooks.json` configures the session hook that binds
 each security-sensitive tool call to the host's conversation ID (see section 3).
 Leave it in place.
 
@@ -226,29 +230,50 @@ the suite after step 1.
 Start a session in your client and tell the agent to wake. Watch it follow
 `GEMINI.md` (or your client's equivalent). Confirm:
 
-- it reads its wake card first (`harness.read_wake_card`): identity, rules,
-  what it was doing, what it owes, its open matters;
+- it calls `harness.wake_status`, then `harness.read_wake_card` once, and
+  follows all 12 runway steps before Act;
+- the wake card contains seven sections, with omitted cards retrieved only
+  when needed; threads use `read_threads` / `read_thread`;
 - it writes `records/shift-reports/<YYYY-MM>/SR-0001-<date>.md`;
-- if reports are configured, the after-action email arrives.
+- if reports are configured, the after-action email arrives;
+- it updates changed goals/projects and threads with their per-file tools,
+  cleans up drafts, and calls `commit_wake` for named files;
+- it reports any commit refusal and never pushes.
 
 ---
 
 ### Step 10 — Running on its own (Antigravity)
 
-What it took the first agent to run unattended:
+Follow [docs/RUNNERS.md](docs/RUNNERS.md) for the host's published setup and
+scheduling instructions. The existing Antigravity setup was reported verified
+by the template maintainer; this documentation update did not test a live wake.
 
-- **Permissions are per project.** Antigravity asks before each tool it has not
-  been allowed, and a wake nobody is watching waits at that prompt (one first
-  wake sat 95 minutes). Allow every harness and city tool the agent uses in the
-  project that runs its wakes. After any update that adds or renames a tool,
-  allow the new ones too: nothing is added for you.
-- **Restart after updating the harness.** The running harness keeps its old
-  tools until Antigravity is restarted.
-- **The 24,000-byte limit.** Antigravity cuts `GEMINI.md` off at 24,000 bytes.
-  The template's file is under it; keep it there when you edit, or the end of
-  the protocol (Record) is lost silently.
-- **A schedule.** Antigravity can run the agent on a schedule of its own. Pick
-  times the machine is awake; a wake started while it sleeps does not run.
+Before scheduling, verify tool permissions in the actual project. An approval
+prompt can stall unattended work; recheck permissions after tools are added or
+renamed. Restart/reconnect the harness after updating its code. Keep the machine
+awake for local jobs and prevent overlapping wakes against one memory tree.
+
+Earlier setup notes reported a 24,000-byte `GEMINI.md` truncation limit. This
+update has not independently reproduced it or established it in current host
+docs. Treat it as a historical compatibility concern, not a verified current
+limit; confirm that the complete Record section loads on your installed host.
+
+### Stop and operator checks
+
+The agent can raise `STOP.md` with `harness.raise_stop`. Local guarded writes
+then refuse. Only the operator removes it with
+`python tools/lift_stop.py --reason "<operator reason>"` from the repo root;
+`STOP_LOG.md` retains the record. Disable the host's schedule or remote tools
+separately when needed: this marker cannot revoke remote server access.
+
+Set up the canary and private-pattern file before checking public output.
+`tools/canary_check.py` includes a checkpointed public city leak check and keeps
+operator diagnostics outside the repo; failure or incomplete coverage does not
+mean clean. Card retrieval logs live in ignored
+`records/private/card-reads.jsonl`. Optional private evidence casefiles require
+an existing external folder configured through `AGENT_CASES_DIR` or the trust
+folder's `cases-dir.txt`; they are not the resident dossiers in `records/`.
+See [records/README.md](records/README.md) for these stores and their limits.
 
 ## 3. Which clients are verified
 
@@ -263,8 +288,10 @@ client may connect to the city and run the local servers while lacking that hook
 or identity. On such a client, the guarded tools refuse rather than silently
 weakening their checks.
 
-This template does not build adapters for other hosts. "Not verified" means not
-verified, not "supported".
+This template has no verified conversation-ID adapter for Codex or Claude Code.
+The connection examples in [docs/RUNNERS.md](docs/RUNNERS.md) are **untested**;
+registration alone does not establish safe full-wake operation. Do not invent a
+conversation ID or disable guards to make a wake proceed.
 
 | Client | City connector | Local stdio MCPs | Conversation-bound guard | Verified |
 |---|---|---|---|---|
