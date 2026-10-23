@@ -548,8 +548,7 @@ In Mac Terminal at the repo root, this does the same (**untested**).
 Success: the tool's tests pass and names change. If tests fail, it restores the
 old names. Use the chosen scheme's equivalents when following this guide.
 Presets live in `naming/`; a custom preset path is also supported. `AGENTS.md`
-remains the protocol's name. `STANDING-ORDERS.md` still refers to its former
-`GEMINI.md` name; its protected text has deliberately not been edited.
+remains the protocol's name.
 
 ### Before publishing
 
