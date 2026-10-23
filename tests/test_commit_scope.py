@@ -55,7 +55,7 @@ def test_clean_count(repo, capsys):
 
 
 @pytest.mark.parametrize("name", [
-    "tools/x.py", "tests/x.py", "config/x.json", "GEMINI.md", fixture_name("STANDING-ORDERS.md"),
+    "tools/x.py", "tests/x.py", "config/x.json", "AGENTS.md", fixture_name("STANDING-ORDERS.md"),
     fixture_name("PERSONNEL-FILE.md"), "communications/archive/a.md", ".gitignore", "README.md", fixture_name("records.md"), "recordsx/a.md",
     fixture_name("DIRECTIVES.md.bak"),
 ])

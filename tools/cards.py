@@ -742,7 +742,9 @@ def round_trip_differences(source_root: Path, generated_root: Path, files: Itera
     return differences
 
 
-def read_card(memory_root: Path, card_id: str, history: bool = False) -> dict[str, Any]:
+def read_card(memory_root: Path, card_id: str, history: bool = False, *,
+              record_read: bool = False, wake: str = "read", conversation: str | None = None,
+              session: str = "wake") -> dict[str, Any]:
     memory_root = Path(memory_root)
     versions: list[dict[str, Any]] = []
     cards_path = memory_root / "cards" / "cards.jsonl"
@@ -754,6 +756,10 @@ def read_card(memory_root: Path, card_id: str, history: bool = False) -> dict[st
     result: dict[str, Any] = {"card": versions[-1]}
     if history:
         result["history"] = versions
+    if record_read:
+        _append_read(memory_root, {"time": _utc_now(), "wake": wake, "query": {"read_card": card_id, "history": history},
+                                   "ids": [card_id], "refused": False, "conversation": conversation,
+                                   "session": session})
     return result
 
 
@@ -830,6 +836,8 @@ def recall(
     wake: str = "read",
     record_read: bool = True,
     history: bool = False,
+    conversation: str | None = None,
+    session: str = "wake",
 ) -> dict[str, Any]:
     memory = Path(memory_root)
     store_path = memory / "cards" / "cards.jsonl"
@@ -933,11 +941,9 @@ def recall(
         )
     _limit_recall_answer(result, int(config.get("recall_answer_bytes", 24000)))
     if record_read:
-        reads = memory / "private" / "card-reads.jsonl"
-        reads.parent.mkdir(parents=True, exist_ok=True)
-        event = {"time": _utc_now(), "wake": wake, "query": result["searched"], "ids": [card["id"] for card in returned], "refused": refused}
-        with reads.open("a", encoding="utf-8", newline="") as handle:
-            handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+        _append_read(memory, {"time": _utc_now(), "wake": wake, "query": result["searched"],
+                              "ids": [card["id"] for card in returned], "refused": refused,
+                              "conversation": conversation, "session": session})
     return result
 
 
@@ -1202,7 +1208,8 @@ def _wake_added_section(
     if max_cards is not None:
         chosen = chosen[:max_cards]
     body = render(chosen)
-    return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": len(entries) - len(chosen)}
+    return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": len(entries) - len(chosen),
+            "ids": [candidates[i]["id"] for i in chosen]}
 
 
 def _log_number(card: dict[str, Any]) -> int:
@@ -1242,6 +1249,10 @@ def read_wake_card(
     *,
     config_path: Path,
     here_tags: list[str] | None = None,
+    wake: str = "read",
+    conversation: str | None = None,
+    record_read: bool = False,
+    session: str = "wake",
 ) -> dict[str, Any]:
     root = Path(repo_root)
     raw_naming = json.loads(Path(naming_path).read_text(encoding="utf-8"))
@@ -1262,6 +1273,8 @@ def read_wake_card(
     handovers.sort(key=lambda c: c["updated_at"], reverse=True)
     doing: list[dict[str, Any]] = handovers[:1]
     log_bundle = None
+    # Every card whose text the bundle shows, so the read log credits each.
+    bundle_ids: list[str] = []
     due_card = None
     if not doing:
         # The newest log is the one with the highest number in its filename.
@@ -1289,6 +1302,7 @@ def read_wake_card(
                     fallback = dict(first)
                     fallback["text"] = (title + "\n\n" if title else "") + "".join(c["text"] for c in selected)
                     log_bundle = fallback
+                    bundle_ids = ([header["id"]] if title else []) + [c["id"] for c in selected]
                     lists = list(re.finditer(r"(?im)^[ \t]*(?:(?:[-+*]|\d+[.)])[ \t]+)?[#*_ \t]*(Due|Waiting|Deferred|Done)\b", first["text"]))
                     due = next((m for m in lists if m.group(1).lower() == "due"), None)
                     if due:
@@ -1323,7 +1337,8 @@ def read_wake_card(
             relative = item["path"].relative_to(root).as_posix()
             header = headers.get(relative)
             tags = header.get("tags", []) if header else []
-            threads.append(dict(id=relative, kind="thread", title=item["title"], tags=tags))
+            threads.append(dict(id=relative, kind="thread", title=item["title"], tags=tags,
+                                card_id=header["id"] if header else None))
     else:
         threads = _file_order([c for c in cards if c["kind"] == "thread" and c["status"] == "live"])
     rules = _file_order([c for c in cards if c["kind"] == "rule" and c["status"] == "live"])
@@ -1357,9 +1372,10 @@ def read_wake_card(
                        for c in candidates]
             def tail(left):
                 return [thread_cfg["wake_omitted"].format(count=left)] if left else []
-            body, shown = thread_files.fit_lines(entries, budget, tail, max_cards)
+            body, indexes = thread_files.fit_line_indexes(entries, budget, tail, max_cards)
             return {"name": name, "text": body, "bytes": _utf8_bytes(body),
-                    "shown": shown, "left_out": len(entries) - shown}
+                    "shown": len(indexes), "left_out": len(entries) - len(indexes),
+                    "ids": [candidates[i]["card_id"] or candidates[i]["id"] for i in indexes]}
         if name in {"Open threads (index)", "Rules"}:
             section = _wake_added_section(name, candidates, budget, max_cards)
             if name == "Rules" and any(withheld_rules.values()):
@@ -1410,7 +1426,8 @@ def read_wake_card(
                         entries = trial
             body = "\n\n".join(([body] if body else []) + entries)
             return {"name": name, "text": body, "bytes": _utf8_bytes(body),
-                    "shown": len(used_other) + len(projects), "left_out": len(other) - len(used_other)}
+                    "shown": len(used_other) + len(projects), "left_out": len(other) - len(used_other),
+                    "ids": [c.get("id") for c in used_other + projects]}
         protected = [c for c in candidates if c is log_bundle or c is due_card]
         if protected:
             rest, _ = _fit_cards([c for c in candidates if c not in protected], max(0, budget - sum(_utf8_bytes(c["text"]) for c in protected)))
@@ -1419,11 +1436,23 @@ def read_wake_card(
             chosen, _ = _fit_cards(candidates, budget)
         if max_cards is not None:
             chosen = chosen[:max(max_cards, len(protected))]
-        left = len(candidates) - len(chosen)
-        body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
-        if left:
-            body += f"\n\n{left} more card(s) left out. Use recall with narrower tags or kinds."
-        return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": left}
+
+        def render_chosen(chosen):
+            left = len(candidates) - len(chosen)
+            body = "\n\n".join(card["text"] for card in chosen) if chosen else "none"
+            if left:
+                body += f"\n\n{left} more card(s) left out. Use recall with narrower tags or kinds."
+            return body, left
+        # The separators and the notice count against the section's budget too.
+        body, left = render_chosen(chosen)
+        while _utf8_bytes(body) > budget:
+            removable = [c for c in chosen if c not in protected]
+            if not removable:
+                break
+            chosen.remove(removable[-1])
+            body, left = render_chosen(chosen)
+        return {"name": name, "text": body, "bytes": _utf8_bytes(body), "shown": len(chosen), "left_out": left,
+                "ids": [c.get("id") for c in chosen]}
 
     sections = [{"name": "Who I am", "text": identity + "\n\n" + governance, "bytes": _utf8_bytes(identity + "\n\n" + governance), "shown": 2, "left_out": 0}]
     sections.extend(build_section(*group) for group in groups)
@@ -1448,8 +1477,36 @@ def read_wake_card(
         raise CardError("wake_card_bytes is too small for whole identity, governance and section notices.")
     # The text goes out once. Sections carry sizes and counts only, so the card
     # doesn't cost twice its length in the agent's context.
-    summary = [{key: value for key, value in section.items() if key != "text"} for section in sections]
+    summary = [{key: value for key, value in section.items() if key not in {"text", "ids"}} for section in sections]
+    if record_read:
+        shown: list[str] = []
+        for section in sections:
+            for card_id in section.get("ids", []):
+                expanded = bundle_ids if log_bundle is not None and card_id == log_bundle["id"] else [card_id]
+                for one in expanded:
+                    if one and one not in shown:
+                        shown.append(one)
+        _append_read(memory, {"time": _utc_now(), "wake": wake, "query": {"wake_card": True},
+                              "ids": shown, "refused": False, "conversation": conversation,
+                              "session": session})
     return {"text": rendered, "sections": summary, "total_bytes": _utf8_bytes(rendered), "dropped_cards": dropped}
+
+
+def _append_read(memory: Path, event: dict[str, Any]) -> None:
+    reads = Path(memory) / "private" / "card-reads.jsonl"
+    reads.parent.mkdir(parents=True, exist_ok=True)
+    with reads.open("a", encoding="utf-8", newline="") as handle:
+        handle.write(json.dumps(event, sort_keys=True, separators=(",", ":")) + "\n")
+
+
+def record_wake_closed(memory_root: Path, wake: str, conversation: str | None, session: str = "wake") -> None:
+    """Mark a conversation as a real wake: its mission log was written.
+
+    Sleep counts reads only from conversations marked here, so read-only and
+    test sessions never make a card look read.
+    """
+    _append_read(Path(memory_root), {"time": _utc_now(), "wake": wake, "closed": True, "conversation": conversation,
+                                     "session": session})
 
 
 def main() -> None:

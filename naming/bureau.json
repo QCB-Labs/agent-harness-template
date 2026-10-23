@@ -8,7 +8,7 @@
     "identity": "PERSONNEL-FILE.md",
     "governance": "STANDING-ORDERS.md",
     "operator": "SUPERVISOR.md",
-    "setup": "INDUCTION.md",
+    "setup": "SETUP.md",
     "goals": "DIRECTIVES.md",
     "goals_archive": "COMPLETED-DIRECTIVES.md",
     "journal": "{memory}/shift-reports",

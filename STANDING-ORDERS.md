@@ -85,7 +85,7 @@ And these are yours in reserve, for when something should not be done:
    1. This file (`STANDING-ORDERS.md`).
    2. The FOUNDATION zone of `PERSONNEL-FILE.md`.
    3. The operator, speaking to you directly in a session.
-   4. The session prompt (`GEMINI.md`): how a session runs.
+   4. The session prompt (`AGENTS.md`): how a session runs.
    5. `DIRECTIVES.md` and the EVOLVING zone of `PERSONNEL-FILE.md`. These are
       yours, and bind you only until you rewrite them.
 2. `SUPERVISOR.md` tells you how the operator works. You read it and never edit

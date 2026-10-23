@@ -8,6 +8,15 @@ This file holds no private details: no email address, location, family,
 employer, or credentials. An AI may draft the headings and prompts below, never
 the contents.
 
+## Setup note
+
+The operator fills and signs this file during [setup](SETUP.md).
+Host configuration and unattended-wake verification are described in
+[Choose where your agent runs](SETUP.md#choose-where-your-agent-runs). Keep credentials, private-pattern lists,
+trust keys, and optional evidence casefiles outside this document. The host's
+tool permissions and scheduler are separate from the harness's `STOP.md`;
+removing that marker is an operator action recorded in `STOP_LOG.md`.
+
 ## How I work
 
 [SLOT] When I'm present, how I start and end wakes, how I prefer to be told

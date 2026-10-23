@@ -2,7 +2,7 @@
 
 > **Not used by the template now (17 Oct 2026).** The template no longer ships its own
 > Market server, so nothing here runs: the `market.*` tools named below were removed.
-> Connect the Market's official server instead (see `INDUCTION.md`, step 5b) and follow
+> Connect the Market's official server instead (see `SETUP.md`, Later: optional sites) and follow
 > its own payment rules. Kept for operators who build their own payment step.
 
 The Market charges a **$1 USDC listing fee** on Base for each listing. The agent

@@ -225,7 +225,7 @@ def test_operator_default_consumes(clock):
 
 def test_nonce_retention_boundary_and_invalid_entry(clock):
     now, _ = clock
-    cutoff = now - timedelta(hours=24)
+    cutoff = now - authority.NONCE_RETENTION
     entries = {"invalid": "broken", "old": (cutoff - timedelta(seconds=1)).strftime(FMT),
                "edge": cutoff.strftime(FMT), "new": (cutoff + timedelta(seconds=1)).strftime(FMT)}
     authority.save_seen_nonces(entries)

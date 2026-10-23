@@ -4,6 +4,7 @@ Paths and headings come from the naming file, so these tests follow whatever
 scheme the repository is using.
 """
 from pathlib import Path
+import json
 import shutil
 
 import pytest
@@ -149,3 +150,75 @@ def test_card_privacy_boundary():
     assert not release.is_private(names.memory("cards", "cards.jsonl"))
     assert release.is_private(names.memory("private", "card-reads.jsonl"))
     assert release.is_private(names.memory("private", "card-errors.log"))
+
+
+def _reads(repo):
+    path = repo / names.memory('private/card-reads.jsonl')
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_wake_card_logs_the_cards_it_showed_and_returns_nothing_new(repo):
+    result = harness.read_wake_card(here_tags=["name:mira"], _conversationId="00000000-0000-4000-8000-00000000000a")
+    assert set(result) == {"text", "sections", "total_bytes", "dropped_cards"}
+    assert all(set(section) == {"name", "bytes", "shown", "left_out"} for section in result["sections"])
+    event = _reads(repo)[-1]
+    assert event["query"] == {"wake_card": True}
+    assert event["conversation"] == "00000000-0000-4000-8000-00000000000a"
+    assert event["wake"] == names.wake_id(1)
+    assert event["ids"] and len(event["ids"]) == len(set(event["ids"]))
+    store = {json.loads(line)["id"] for line in (repo / names.memory('cards/cards.jsonl')).read_text(encoding="utf-8").splitlines()}
+    assert set(event["ids"]) <= store
+
+
+def test_recall_logs_wake_and_conversation(repo):
+    harness.recall(tags=["kind:goal"], _conversationId="00000000-0000-4000-8000-00000000000b")
+    event = _reads(repo)[-1]
+    assert event["wake"] == names.wake_id(1) and event["conversation"] == "00000000-0000-4000-8000-00000000000b"
+
+
+def test_mission_log_marks_its_conversation_a_real_wake(repo):
+    harness.recall(tags=["kind:goal"], _conversationId="00000000-0000-4000-8000-00000000000c")
+    harness.write_journal("# Mission Log\n\n## Plan\nLook tomorrow.\n", _conversationId="00000000-0000-4000-8000-00000000000c")
+    closed = [e for e in _reads(repo) if e.get("closed")]
+    assert closed == [dict(closed[0], wake=names.wake_id(1), conversation="00000000-0000-4000-8000-00000000000c", closed=True)]
+    harness.recall(tags=["kind:goal"], _conversationId="00000000-0000-4000-8000-00000000000d")
+    assert _reads(repo)[-1]["wake"] == names.wake_id(2)
+
+
+def test_stop_marker_keeps_wake_card_out_of_read_log(repo, monkeypatch):
+    harness._ensure_cards()
+    monkeypatch.setattr(harness.stop_marker, "marker_present", lambda root: True)
+    harness.read_wake_card(here_tags=["name:mira"])
+    assert not (repo / names.memory('private/card-reads.jsonl')).exists()
+
+
+def test_sealed_marker_labels_every_read_and_the_closing(repo):
+    (repo / harness.SEALED_MARKER).parent.mkdir(parents=True, exist_ok=True)
+    (repo / harness.SEALED_MARKER).write_text("", encoding="utf-8")
+    harness.recall(tags=["kind:goal"])
+    harness.read_wake_card(here_tags=[])
+    harness.write_journal("# Mission Log\n\n## Plan\nLook tomorrow.\n")
+    assert {e["session"] for e in _reads(repo)} == {"sealed"}
+    (repo / harness.SEALED_MARKER).unlink()
+    harness.recall(tags=["kind:goal"])
+    assert _reads(repo)[-1]["session"] == "wake"
+
+
+def test_closed_is_written_after_the_log_is_mailed_and_cut(repo, monkeypatch):
+    order = []
+    monkeypatch.setattr(harness, "_send_email", lambda **kwargs: order.append("mail") or False)
+    real_recut = harness._recut_after_write
+    monkeypatch.setattr(harness, "_recut_after_write", lambda *a: order.append("recut") or real_recut(*a))
+    real_closed = harness.cards_module.record_wake_closed
+    monkeypatch.setattr(harness.cards_module, "record_wake_closed",
+                        lambda *a, **k: order.append("closed") or real_closed(*a, **k))
+    harness.write_journal("# Mission Log\n\n## Plan\nLook tomorrow.\n")
+    assert order == ["mail", "recut", "closed"]
+
+
+def test_read_card_is_logged(repo):
+    harness._ensure_cards()
+    card_id = json.loads((repo / names.memory('cards/cards.jsonl')).read_text(encoding="utf-8").splitlines()[0])["id"]
+    harness.read_card(card_id=card_id)
+    event = _reads(repo)[-1]
+    assert event["ids"] == [card_id] and event["query"]["read_card"] == card_id and event["wake"] == names.wake_id(1)

@@ -26,6 +26,11 @@ HARNESS_KEPT = (
     naming.memory("seen.json"),
 )
 COMMITTABLE = (" M", "M ", "MM", "A ", "AM", "??", " D", "D ", "MD", "AD")
+# His own files: a changed one he did not name is reported after the commit,
+# never swept in, because an operator move can be waiting in the same tree.
+HIS_PREFIX = naming.dir_name("memory") + "/"
+HIS_FILES = tuple(naming.rel(k) for k in ("goals", "goals_archive", "identity"))
+LOG_FOLDER = naming.rel("journal") + "/"
 LIST_LIMIT = 30
 _states: dict[str, dict] = {}
 _guard = threading.Lock()
@@ -245,6 +250,25 @@ def _safe_to_add(root: Path, name: str, changes: dict[str, str]) -> bool:
     return True
 
 
+def _this_wakes_log(name: str, wake: int) -> bool:
+    return (name.startswith(LOG_FOLDER) and name.endswith(".md")
+            and Path(name).name.startswith(f"{naming.wake_id(wake)}-"))
+
+
+def _left_uncommitted(changes: dict[str, str], committed: list[str]) -> list[str]:
+    return sorted(name for name in changes
+                  if name not in committed and _committable(name, changes)
+                  and (name.startswith(HIS_PREFIX) or name in HIS_FILES))
+
+
+def _left_note(left: list[str]) -> str:
+    shown = ", ".join(left[:LIST_LIMIT])
+    more = f", and {len(left) - LIST_LIMIT} more" if len(left) > LIST_LIMIT else ""
+    return (f"These changed files of yours were not committed: {shown}{more}. "
+            "If this wake changed them, commit them too: "
+            f'harness.{naming.tool("commit_wake")}(files=["<file>", "<file>"], summary="<one line>").')
+
+
 def wait_seconds(root: Path) -> float:
     try:
         value = json.loads((root / "config/harness.json").read_text(encoding="utf-8"))["commit_wait_seconds"]
@@ -358,6 +382,10 @@ def _commit_wake(root: Path, files: list[str], summary: str, load_budget, lock: 
         if (isinstance(wake, bool) or not isinstance(wake, int) or wake < 1 or wake < state["wake"]
                 or wake <= state["open_count"]):
             return refuse("The shift report comes first; write it before commit_wake.")
+        # This wake's own log always goes with its commit, named or not.
+        kept += [name for name in sorted(changes)
+                 if _this_wakes_log(name, wake) and name not in names and name not in kept
+                 and name not in staged and _safe_to_add(root, name, changes)]
         message = f"{naming.wake_id(wake)}: {summary}"
         finished = threading.Event()
 
@@ -390,6 +418,10 @@ def _commit_wake(root: Path, files: list[str], summary: str, load_budget, lock: 
                                   "message": message, "files": names}
                         if kept:
                             result["harness_files"] = kept
+                        left = _left_uncommitted(changes, everything)
+                        if left:
+                            result["left_uncommitted"] = left[:LIST_LIMIT]
+                            result["note"] = _left_note(left)
             except OSError:
                 try:
                     _run(root, ["git", "reset", "-q", "--", *everything])

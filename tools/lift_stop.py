@@ -20,7 +20,7 @@ def main(argv=None) -> int:
         return 2
     try:
         root = Path.cwd()
-        if not (root / "GEMINI.md").is_file() or not (root / "tools" / "harness_mcp.py").is_file():
+        if not (root / "AGENTS.md").is_file() or not (root / "tools" / "harness_mcp.py").is_file():
             print("NOT THE REPO ROOT - NO MARKER REMOVED")
             return 2
         if not marker_present(root):

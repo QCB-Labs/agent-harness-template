@@ -124,6 +124,40 @@ def footer(repo: Path) -> str:
         return ""
 
 
+def strip_footers(repo: Path, content: str) -> str:
+    """Remove footer lines the agent copied into a log, and the rule above each.
+
+    The wake card shows the last log with its footer, and the agent has
+    copied it into a new log with an old count, number and all.
+    Only the footer the harness adds is measured, so a copy goes before the
+    real one is added. A line counts as a footer when it carries both fixed
+    ends of the configured template, so the two can't drift apart.
+    """
+    cfg = settings(repo)
+    template = (cfg or {}).get("footer", "")
+    if "{models}" not in template:
+        return content
+    before, after = template.split("{models}", 1)
+    head = before.strip().splitlines()[-1].strip()
+    tail = after.strip()
+    if not head or not tail:
+        return content
+    # The template's footer also measures the total; match its rendered count.
+    tail_pattern = re.compile(re.escape(tail).replace(r"\{total\}", r"\d+") + r"$")
+    lines = content.splitlines(keepends=True)
+    kept: list[str] = []
+    for line in lines:
+        text = line.strip()
+        if text.startswith(head) and tail_pattern.search(text):
+            while kept and not kept[-1].strip():
+                kept.pop()
+            if kept and kept[-1].strip() == "---":
+                kept.pop()
+            continue
+        kept.append(line)
+    return "".join(kept)
+
+
 def main() -> None:
     import argparse
 

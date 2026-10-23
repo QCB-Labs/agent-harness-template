@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 import pytest
-from tools import cards as c, harness_mcp as h, threads as t
+from tools import cards as c, harness_mcp as h, threads as t, names
 
 ROOT = Path(__file__).resolve().parents[1]
 NOW = datetime.datetime(2026, 10, 11, 12, tzinfo=datetime.timezone.utc)
@@ -580,3 +580,27 @@ def test_no_containing_title_preserves_previous_collision_refusal(repo, tool, kw
     answer = getattr(h, tool)(title='Am-ber', **kwargs)
     assert answer == t.refusal(tool, 'the file name am-ber.md belongs to "Am ber"')
     assert snapshot(repo) == stable
+
+
+def test_wake_card_logs_the_threads_it_shows_not_a_prefix(repo):
+    # Listed in reverse title order: the long Z threads come first, so the
+    # budget skips some of them and still fits short A threads after.
+    titles = [(f'Z{i} ' + 'x' * 300) if i % 2 == 0 else f'A{i}' for i in range(8)]
+    for title in titles:
+        t.open_thread(repo, title, 'resident #260 at Place 801.')
+    recut(repo, 'threads')
+    cfg = json.loads((repo / 'config/cards.json').read_bytes())
+    cfg['wake_sections']['thread_index'] = 450
+    write(repo / 'config/cards.json', json.dumps(cfg))
+    result = c.read_wake_card(repo, repo / 'naming.json', config_path=repo / 'config/cards.json',
+                              record_read=True, wake=names.wake_id(1))
+    section = result['text'].split('## Open threads (index)\n\n')[1].split('\n\n## Rules')[0]
+    listed = [item['title'] for item in t.summaries(repo)]
+    shown = [title for title in listed if f'- {title} [' in section]
+    assert shown and shown != listed[:len(shown)], 'the budget must skip a thread for this test to mean anything'
+    by_file = {card['origin']['file']: card['id'] for card in store(repo)._current_state().values()
+               if (card.get('origin') or {}).get('logical') == 'threads' and card['origin'].get('key') == 'header'}
+    headers = {item['title']: by_file[item['path'].relative_to(repo).as_posix()] for item in t.summaries(repo)}
+    event = json.loads((repo / names.memory('private', 'card-reads.jsonl')).read_text(encoding='utf-8').splitlines()[-1])
+    logged = [i for i in event['ids'] if i in headers.values()]
+    assert sorted(logged) == sorted(headers[title] for title in shown)

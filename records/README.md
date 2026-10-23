@@ -2,13 +2,16 @@
 
 What I choose to keep. Not a transcript — a record of what's worth carrying forward.
 
-This file maps every file in `records/`, the local harness tools that touch them, and the sister and city platform tools the agent uses. If a memory file exists here and isn't listed below, it's either stale or something new that needs documenting.
+This guide maps the memory stores and their harness tools. Paths and exposed
+tool names below use the Bureau scheme in `naming.json`. Generated folders
+appear when first needed; their absence at genesis is normal. Use
+`harness.help(tool="<name>")` for the current arguments.
 
 ---
 
 ## Startup sequence
 
-[`GEMINI.md`](../GEMINI.md) defines the authoritative 12-step pre-flight
+[`AGENTS.md`](../AGENTS.md) defines the authoritative 12-step pre-flight
 runway. In summary:
 
 - Steps 1–4 check wake status, read the wake card, check crash recovery, then
@@ -23,7 +26,7 @@ runway. In summary:
 
 No building, posting, or spending begins before Step 12. **Act** remains a
 discretionary menu; **Record** is the mandatory closing checklist. Consult
-`GEMINI.md` itself for the exact order and conditions rather than treating this
+`AGENTS.md` itself for the exact order and conditions rather than treating this
 summary as a second protocol.
 
 ## Write classes
@@ -35,7 +38,7 @@ Every file has one editing rule.
 | Seed | `PERSONNEL-FILE.md` | Rewritten in place to be truer, not longer. Only the evolving zone is agent-editable. |
 | Log | journal, lessons, wishlist, goal archive, resident history entries | Append only. To fix a mistake, add a new dated entry that points back to the wrong one; never edit a landed entry. |
 | Law | `STANDING-ORDERS.md`, `SUPERVISOR.md` | Changed only by the operator, in a session. No harness tool can write them. |
-| Volatile | `DIRECTIVES.md`, `records/open-matters.md`, `budget.json`, `seen.json`, `map.json`, `almanac.json`, `registry.json` | Overwritten as state changes. Nothing here must survive on its own. |
+| Volatile | `DIRECTIVES.md`, goal/project current state, thread summaries, `budget.json`, `seen.json`, `map.json`, `almanac.json`, `registry.json` | Overwritten as state changes. Nothing here must survive on its own. |
 
 ---
 
@@ -101,13 +104,44 @@ Machine JSON registry of known residents.
 |------|-----------|-------------|
 | `harness.read_case_index` | read | Returns machine registry JSON or one resident record |
 
-### open-matters.md
-Tracks living inquiries, debates, potential returns, and ongoing conversations across the city and other sites. Not a binding task queue.
+### threads/ and legacy open matters
 
-| Tool | Direction | What it does |
-|------|-----------|-------------|
-| `harness.read_open_matters` | read | Returns living and resolved inquiry threads |
-| `harness.update_open_matters` | write | Safely replaces the full file with size/header guards, atomic replacement, and rotating backups |
+New inquiries use one file per thread in `threads/`. `harness.open_thread`
+creates one; `update_thread` appends a dated update and can replace its current
+"Where it stands" summary. `close_thread` moves it into `threads/closed/`
+with its closing wake. Updates remain history; the summary is current state.
+
+`harness.read_threads(start=1)` returns a bounded, paginated index of open
+threads and a closed count. Follow its next-page instruction to see every open
+thread. `read_thread(title=..., closed_in=...)` reads one, including a particular
+closing when a title has been reused. Recall with `kinds=["thread"]` searches
+thread cards; add `history=True` for finished matters.
+
+`open-matters.md` is retained legacy memory, not the destination for new threads.
+`read_open_matters` returns the legacy file until per-file threads exist, then
+returns their index. `update_open_matters` permits guarded legacy replacement
+only before per-file threads exist; afterward it refuses and points to the
+per-thread tools. Operator migration
+helpers in `tools/threads.py` preserve old text in
+`open-matters-archive.md` and `open-matters-before-split.md`; do not silently
+remove the legacy record.
+
+### goals/ and projects/
+
+`DIRECTIVES.md` holds the standing ambition and any retained legacy list;
+`harness.read_directives` assembles that with the per-file goals and projects.
+`set_ambition` changes the ambition, `set_goal` creates or updates a goal, and
+`drop_goal` removes one with a reason. Projects have a target, next step, optional
+steps, and an optional goal they serve: use `open_project`, `serve_project`, and
+`advance_project`. `close_project` records completion or abandonment in
+`projects/closed/` with its wake number. `read_goal` and `read_project` retrieve
+individual records; `closed_in` selects a project's closing.
+
+`amend_directives` permits guarded legacy replacement until goal files exist,
+then refuses it and points to per-file tools. `close_directives` still appends
+to the legacy archive. `set_ambition` refuses while a legacy `## Now` list remains. Legacy lists remain
+visible until explicitly migrated; do not discard them merely because new files
+exist. `COMPLETED-DIRECTIVES.md` remains the legacy archive.
 
 ### filings/
 Catalogue of created and published works (`index.md` and individual dossiers in `items/<slug>.md`). Used when publishing dispatches or crafting goods.
@@ -129,7 +163,11 @@ after the public mail window has closed.
 
 ### private/ and replay/
 Harness-owned private-use receipts, wake state, and replay-prevention records.
-These files are private implementation state, not model-readable memory.
+These are ignored implementation records, not public memory.
+`private/card-reads.jsonl` logs card IDs actually returned by recall, card and
+wake-card reads, query details, conversation identity, and wake closure.
+`SEALED.md` marks a sealed session for this log; it is not the stop marker.
+Read logging is not a transcript of every file read or proof the model used it.
 
 ### seen.json
 Checkpoint file for feed deltas. Tracks the last ID read in each feed to prevent re-reading old traffic.
@@ -166,10 +204,10 @@ An emptied log at genesis says so on its first lines. An empty log is the correc
 | File | What it is | Tool |
 |------|-----------|------|
 | `PERSONNEL-FILE.md` | Identity, values, foundation (immutable), and evolving section | `harness.read_personnel_file`, `harness.amend_personnel_file` |
-| `DIRECTIVES.md` | Active, pending, and avoided tasks; guarded full-file replacement with rotating backups | `harness.read_directives`, `harness.amend_directives` |
-| `COMPLETED-DIRECTIVES.md` | Completed tasks (append-only archive) | `harness.close_directives` |
+| `DIRECTIVES.md` | Standing ambition and retained legacy tasks; current goals/projects are per-file | `harness.read_directives`, `harness.set_ambition` |
+| `COMPLETED-DIRECTIVES.md` | Legacy completed-task archive, retained | New project closings use `harness.close_project` |
 | `STANDING-ORDERS.md` | Operating rules the agent cannot change | `harness.read_standing_orders` |
-| `GEMINI.md` | Session prompt — procedure and rules of engagement | (operator-authored, read by model loader) |
+| `AGENTS.md` | Session prompt — procedure and rules of engagement | (operator-authored, read by model loader) |
 | `budget.json` | The wake counter (older files may also hold a cached balance and quotas, no longer read) | `harness.file_shift_report` (harness-maintained) |
 | `pending-approval/` | Pre-flight staging airlock for candidate public text | `harness.submit_for_approval`, `harness.read_pending_approval`, `harness.archive_submission` |
 | Messages to the operator | Emailed, and shown in the session. No message files | `harness.send_memo` |
@@ -179,11 +217,77 @@ An emptied log at genesis says so on its first lines. An empty log is the correc
 
 ---
 
+## Cards and bounded recall
+
+`cards/cards.jsonl` is the versioned card store and `cards/index.json` its index.
+Harness memory writes recut the affected source into cards. Sources remain
+human-readable; journals and resident dossiers have keyed pieces so an edit does
+not make the whole file new. `harness.recall(tags=[...], text=..., kinds=[...])`
+returns what fits and reports omitted matches. `read_card(card_id=...,
+history=True)` retrieves one card and its versions. Finished projects and threads
+can be found with `recall(..., history=True)`; this does not expose every retired
+card indiscriminately.
+
+`read_wake_card()` returns seven sections: identity/governance, what I was doing,
+what I owe, open threads index, rules, what needs checking, and what's here.
+It carries the newest report's plan and, where it fits, its observations and
+waiting/due material. The text is returned once in the response, alongside section sizes/counts
+that do not duplicate its contents; it is not cached away on later calls.
+The protocol calls it once per wake. Omissions include retrieval instructions. UTF-8 byte
+budgets live in `config/cards.json` (44,000 for the whole wake card, 16,000 for
+recall content, 24,000 for the recall answer); they are separate from host
+instruction-file limits.
+
+## Publication, reliability, and operator records
+
+`submit_for_approval` saves a draft in ignored `pending-approval/` with metrics
+and checks. City drafts require `target_place_id`; other sites use `site`.
+`BLOCKED` means saved without clearance: do not post it or repeat blocked text
+into a report. A staged draft is not a publication and cannot intercept a direct
+call to a remote site's tools. Review `outgoing_check`, city size metrics or the
+other site's own limits, and the protocol before publishing. `read_pending_approval`
+and `archive_submission` maintain the airlock.
+
+Reliability phrases from `config/verdict-words.json` are advisory flags on
+impressions and drafts. Optional private evidence casefiles are separate from
+agent-readable `records/case-files/`: the operator creates an external folder
+and configures `AGENT_CASES_DIR` or `cases-dir.txt` in the trust folder. The
+harness appends `<kind>-<key>.flags.md`; only the operator writes the paired
+evidence file. No tool returns those private casefiles. Failures do not undo an
+agent's memory write (`tools/casefiles.py`).
+
+The public leak check (`tools/canary_check.py`) examines the agent's public city
+output for canary, secret, private-pattern and local-path leaks. Its checkpoint,
+latched alarms and diagnostic log live outside the repository in the operator
+log folder. An incomplete or failed check is not a clean result; it is not a
+scan of all other sites. The local canary scanner searches the memory and draft folders for copies of
+the bait marker. It does not scan host conversation logs. `wake_status` includes
+that local canary summary; the public-check function is separate and is not
+automatically run by `wake_status` or the scanner CLI.
+
+## Stopping and committing
+
+`harness.raise_stop(reason=...)` creates `STOP.md`. Guarded local mutations refuse
+while it stands; read/status tools remain available. `STOP_LOG.md` preserves
+honoured attempts and operator removal. Only the operator lifts it from the
+repository root with `python tools/lift_stop.py --reason "<reason>"`; that command
+prints a suggested commit but does not commit. A stop marker cannot revoke
+remote MCP permissions or stop the host scheduler.
+
+After filing the shift report, `commit_wake(files=[...], summary=...)` commits
+named changed files, the current report, and changed harness-maintained files
+(cards, resident registry/index, seen markers, budget) with repository hooks.
+It does not sweep up unrelated edits. The wait is configured in
+`config/harness.json` (150 seconds). On `STILL_RUNNING`, call `commit_status`
+once; on `HOOK_REFUSED`, leave the files and tell the operator the refusal line,
+without copying refused text. Never push. Private commit diagnostics are not
+public memory.
+
 ## Other sites
 
 The template ships no tools for other sites. An operator may connect a site's
 own official MCP server, such as the Square (1F916, `https://1f916.ai/mcp`) or
-the Market (1F3EA, `https://1f3ea.com/mcp`); see `INDUCTION.md`. Each site
+the Market (1F3EA, `https://1f3ea.com/mcp`); see `SETUP.md`. Each site
 documents its own tools: start with its front door and official facts.
 
 ---

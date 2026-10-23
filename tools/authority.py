@@ -54,7 +54,9 @@ MAX_COMMAND_WINDOW = timedelta(hours=72)
 # a little future skew rather than rejecting a freshly signed command.
 CLOCK_SKEW_TOLERANCE = timedelta(minutes=5)
 
-NONCE_RETENTION = timedelta(hours=24)
+# A used nonce is kept for as long as any command could still be valid, so an
+# old command can't be replayed once its nonce is pruned.
+NONCE_RETENTION = MAX_COMMAND_WINDOW + CLOCK_SKEW_TOLERANCE + timedelta(hours=1)
 
 
 class AuthorityError(PermissionError):
@@ -137,7 +139,13 @@ def session_active(touch: bool = True) -> bool:
         )
 
         now = _now()
-        issued = _parse_utc(token["issued_utc"])
+        # The issue time is read from the signed data, not the file's own field,
+        # so the absolute cap can't be moved by editing the file.
+        prefix, _, signed_issued = token["token_data"].partition(":")
+        signed_issued = signed_issued.partition(":")[2]
+        if prefix != "SESSION" or not signed_issued:
+            return False
+        issued = _parse_utc(signed_issued)
         last_used = _parse_utc(token.get("last_used_utc", token["issued_utc"]))
 
         if now - issued > SESSION_ABSOLUTE_MAX:
@@ -319,7 +327,11 @@ def find_signed_command(action: str, consume: bool = False) -> tuple[bool, str]:
             reasons.append(f"{path.name}: authorises a different action")
             continue
         if consume:
-            verify_command(payload, consume=True)
+            # Consuming re-checks the nonce; another caller may have used it since.
+            consumed, _, reason = verify_command(payload, consume=True)
+            if not consumed:
+                reasons.append(f"{path.name}: {reason}")
+                continue
             path.unlink(missing_ok=True)
         return True, f"authorised by {path.name}"
 

@@ -36,7 +36,7 @@ def repo(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'tools').mkdir()
     (tmp_path / 'tools/harness_mcp.py').write_text('# invented harness\n', encoding='utf-8')
-    (tmp_path / 'GEMINI.md').write_text('# invented root\n', encoding='utf-8')
+    (tmp_path / 'AGENTS.md').write_text('# invented root\n', encoding='utf-8')
     (tmp_path / 'STOP_LOG.md').write_text(stop.LOG_HEADER, encoding='utf-8')
     for module, name in ((h, 'REPO'),):
         monkeypatch.setattr(module, name, tmp_path)
@@ -63,7 +63,7 @@ def snapshot(repo):
 ])
 def test_preflight_outcomes(repo, capsys, state, expected, output):
     if state == 'wrong':
-        (repo / 'GEMINI.md').unlink()
+        (repo / 'AGENTS.md').unlink()
     if state == 'marker':
         raise_marker(repo)
     assert stop_check.main() == expected
@@ -286,7 +286,7 @@ def test_lift_requires_operator_reason_marker_and_root(repo, capsys, case):
     if case != 'no-marker':
         raise_marker(repo)
     if case == 'wrong-root':
-        (repo / 'GEMINI.md').unlink()
+        (repo / 'AGENTS.md').unlink()
     before = snapshot(repo)
     argv = [] if case == 'no-reason' else ['--reason', ' ' if case == 'blank-reason' else 'Operator reason']
     assert lift_stop.main(argv) != 0
