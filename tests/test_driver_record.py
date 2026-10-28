@@ -1,5 +1,6 @@
 """The model footer: counted from an invented driver record, never from the model's own word."""
 from naming_support import fixture_name
+from contextlib import closing
 import datetime
 import json
 import os
@@ -114,6 +115,11 @@ def test_newest_conversation_for_the_folder_is_the_one_read(repo):
 def test_a_name_in_the_text_of_a_call_is_not_counted(repo):
     said = b'\x12\x30He said fixture-model-c and \x9a\x01\x03gpt-5-codex\xa2\x01 in a letter.'
     record(driver(repo) / 'a.db', uri(repo), ['fixture-model-a'] * 3, noise=said)
+    with closing(sqlite3.connect(driver(repo) / 'a.db')) as con:
+        con.execute('update gen_metadata set data = ? where idx = 2',
+                    (call('fixture-model-a', said) + said,))
+        con.execute('insert into gen_metadata values (?, ?, 0)', (3, said))
+        con.commit()
     assert d.models_used(repo) == [('fixture-model-a', 3)]
 
 
@@ -143,13 +149,68 @@ def test_nothing_readable_means_no_footer_and_the_log_is_still_written(repo, dam
     assert json.loads((repo / 'budget.json').read_bytes())['wake_count'] == 151
 
 
-def test_the_record_is_only_read(repo):
+@pytest.mark.parametrize('wal', [False, True])
+def test_the_record_is_only_read(repo, monkeypatch, wal):
     target = driver(repo) / 'a.db'
     record(target, uri(repo), ['fixture-model-a'] * 2)
-    before = target.read_bytes()
-    written(repo)
-    assert target.read_bytes() == before
-    assert sorted(p.name for p in driver(repo).iterdir()) == ['a.db']
+    with closing(sqlite3.connect(target)) as writer:
+        if wal:
+            writer.execute('pragma journal_mode=wal')
+            writer.execute('insert into gen_metadata values (?, ?, 0)', (2, call('fixture-model-a')))
+            writer.commit()
+        before = {p.name: p.read_bytes() for p in driver(repo).iterdir()}
+        opened = []
+        original = d._open
+
+        def copied_only(path):
+            assert path.parent != target.parent
+            assert path.read_bytes() == target.read_bytes()
+            for suffix in ('-wal', '-shm'):
+                live = Path(str(target) + suffix)
+                if live.exists():
+                    assert Path(str(path) + suffix).read_bytes() == live.read_bytes()
+            opened.append(path)
+            return original(path)
+
+        monkeypatch.setattr(d, '_open', copied_only)
+        assert d.models_used(repo) == [('fixture-model-a', 3 if wal else 2)]
+        assert {p.name: p.read_bytes() for p in driver(repo).iterdir()} == before
+        assert opened and all(not p.parent.exists() for p in opened)
+
+
+def test_copy_failure_means_no_footer(repo, monkeypatch):
+    import shutil
+
+    record(driver(repo) / 'a.db', uri(repo), ['fixture-model-a'])
+
+    def unavailable(*args, **kwargs):
+        raise OSError('copy unavailable')
+
+    monkeypatch.setattr(shutil, 'copy2', unavailable)
+    monkeypatch.setattr(d, '_open', lambda path: pytest.fail('must not open after copy failure'))
+    assert d.footer(repo) == ''
+
+
+@pytest.mark.parametrize('outcome', ['success', 'other_folder', 'query_error'])
+def test_connections_are_closed_on_every_exit(repo, monkeypatch, outcome):
+    record(driver(repo) / 'a.db', uri(repo if outcome != 'other_folder' else repo.parent), ['fixture-model-a'])
+    connections = []
+    original = d._open
+
+    def tracked(path):
+        con = original(path)
+        connections.append(con)
+        return con
+
+    monkeypatch.setattr(d, '_open', tracked)
+    cfg = d.settings(repo)
+    if outcome == 'query_error':
+        cfg['table'] = 'missing'
+    d.models_used(repo, cfg)
+    assert connections
+    for con in connections:
+        with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+            con.execute('select 1')
 
 
 def test_without_labels_every_name_is_shown_as_the_driver_wrote_it(repo):

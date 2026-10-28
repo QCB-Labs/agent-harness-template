@@ -12,11 +12,14 @@ unfamiliar record yields an empty answer.
 """
 from __future__ import annotations
 
+from contextlib import closing, contextmanager
 import json
 import os
 from pathlib import Path
 import re
+import shutil
 import sqlite3
+import tempfile
 import time
 
 SETTINGS = "config/driver-record.json"
@@ -66,6 +69,19 @@ def _open(path: Path) -> sqlite3.Connection:
     return sqlite3.connect("file:" + path.as_posix() + "?mode=ro", uri=True, timeout=1.0)
 
 
+@contextmanager
+def _snapshot(path: Path):
+    with tempfile.TemporaryDirectory(prefix="sputnik-driver-") as temporary:
+        copied = Path(temporary) / path.name
+        shutil.copy2(path, copied)
+        for suffix in ("-wal", "-shm"):
+            sidecar = Path(str(path) + suffix)
+            if sidecar.exists():
+                shutil.copy2(sidecar, Path(str(copied) + suffix))
+        with closing(_open(copied)) as con:
+            yield con
+
+
 def models_used(repo: Path, cfg: dict | None = None, now: float | None = None) -> list[tuple[str, int]]:
     """Models named on the calls of the newest conversation for this folder, in order of first use."""
     cfg = cfg if cfg is not None else settings(repo)
@@ -83,7 +99,7 @@ def models_used(repo: Path, cfg: dict | None = None, now: float | None = None) -
         try:
             if path.stat().st_mtime < limit:
                 break
-            with _open(path) as con:
+            with _snapshot(path) as con:
                 blobs = [row[0] for row in con.execute(
                     f"select [{cfg['workspace_column']}] from [{cfg['workspace_table']}]")]
                 if not any(isinstance(blob, bytes) and _names_folder(blob, forms) for blob in blobs):
@@ -100,7 +116,9 @@ def models_used(repo: Path, cfg: dict | None = None, now: float | None = None) -
                     if name:
                         counts[name] = counts.get(name, 0) + 1
                 return list(counts.items())
-        except (OSError, sqlite3.Error, KeyError, IndexError, ValueError):
+        except OSError:
+            return []
+        except (sqlite3.Error, KeyError, IndexError, ValueError):
             continue
     return []
 
