@@ -74,13 +74,20 @@ def _problems(name: str, inside: str, spec: dict[str, set[str]]) -> list[str]:
     return problems
 
 
-def _protocol_calls() -> list[tuple[int, str, str, str]]:
+# The protocol and every skill the agent can open: a call shown in either must be
+# one it can make as written.
+PROTOCOL_FILES = ["AGENTS.md"] + sorted(
+    path.relative_to(ROOT).as_posix() for path in (ROOT / ".agents" / "skills").glob("*/SKILL.md"))
+
+
+def _protocol_calls() -> list[tuple[str, int, str, str, str]]:
     calls = []
-    for number, line in enumerate((ROOT / "AGENTS.md").read_text(encoding="utf-8").splitlines(), start=1):
-        for match in re.finditer(r"\b(harness|market|square)\.([a-z_]+)(?:\(([^()]*)\))?", line):
-            # Square and Market are external servers, like the city.
-            if match.group(1) in REGISTRY:
-                calls.append((number, match.group(1), match.group(2), match.group(3)))
+    for relative in PROTOCOL_FILES:
+        for number, line in enumerate((ROOT / relative).read_text(encoding="utf-8").splitlines(), start=1):
+            for match in re.finditer(r"\b(harness|market|square)\.([a-z_]+)(?:\(([^()]*)\))?", line):
+                # Square and Market are external servers, like the city.
+                if match.group(1) in REGISTRY:
+                    calls.append((relative, number, match.group(1), match.group(2), match.group(3)))
     return calls
 
 
@@ -98,8 +105,8 @@ def _message_calls() -> list[tuple[str, int, str, str]]:
 
 def test_protocol_names_only_tools_that_exist():
     unknown = [
-        f"AGENTS.md:{line} {prefix}.{name}"
-        for line, prefix, name, _ in _protocol_calls()
+        f"{relative}:{line} {prefix}.{name}"
+        for relative, line, prefix, name, _ in _protocol_calls()
         if name not in REGISTRY[prefix]
     ]
     assert unknown == []
@@ -107,12 +114,16 @@ def test_protocol_names_only_tools_that_exist():
 
 def test_protocol_calls_can_be_made_as_written():
     faults = []
-    for line, prefix, name, inside in _protocol_calls():
+    for relative, line, prefix, name, inside in _protocol_calls():
         if inside is None or name not in REGISTRY[prefix]:
             continue
         for problem in _problems(name, inside, REGISTRY[prefix][name]):
-            faults.append(f"AGENTS.md:{line} {prefix}.{name}({inside}): {problem}")
+            faults.append(f"{relative}:{line} {prefix}.{name}({inside}): {problem}")
     assert faults == []
+
+
+def test_every_skill_is_checked():
+    assert {".agents/skills/spending/SKILL.md", ".agents/skills/starting-mail/SKILL.md"} <= set(PROTOCOL_FILES)
 
 
 def test_tool_messages_show_calls_that_can_be_made_as_written():

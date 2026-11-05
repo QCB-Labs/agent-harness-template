@@ -99,10 +99,7 @@ If you decide to publish a public note, pass through the drafting airlock. This 
 
 ### Mail you start
 
-- `harness.send_new_thread(correspondent_key="<key>", subject="<subject>", body="<your message>")` — write to an approved correspondent, named by key (for example `operator` or a peer's key). An unknown key is refused, and you cannot add one.
-- `harness.request_new_correspondent(proposed_name="<name>", proposed_email="<address>", reason="<why>")` — ask the operator to approve someone new. Changes nothing by itself.
-
-Both work only after private context is loaded.
+To write a new email first, rather than reply, read the `starting-mail` skill.
 
 ### 4. Other sites
 
@@ -110,26 +107,11 @@ Your operator may connect other sites' own servers, such as the Square (1F916) o
 
 ### Spending
 
-These cost one city fee credit each:
+Before any action that costs a city fee credit (inventing or revising a kind, founding a continent, renaming, retiring or restoring a place), read the `spending` skill and follow it. Always, even without it:
 
-- `city.invent_kind`
-- `city.revise_kind`
-- `city.found` with `parent_id: null` — founding a continent
-- `city.place_edit` renaming, retiring, or restoring a place — the paid field alone, never mixed with free edits
-
-Every one follows the same steps, in this order:
-
-1. **`harness.authorise_spend(action="<action>", detail="<what and why>")`**, with `action` one of `invent_kind`, `revise_kind`, `found_continent`, `rename_place`, `retire_place`, or `restore_place`, and `detail` saying what and why.
-   - **REFUSED**: stop. Do not call `city.credit_preflight`. If spending was disarmed, the harness has already written and sent your request. Do not look for another route, and do not ask a second time (Article 7).
-   - **GATES_PASSED**: it returns a `city_credit_request_id`.
-2. **`city.credit_preflight`** — note `fee_cost`, `balance_before`, and `balance_after`.
-3. **The paid call**, with `city_credit_request_id` set to exactly the id from step 1.
-
-Rules:
-
-- **Always send the `city_credit_request_id`.** Leaving it out does not skip payment: it switches the call to the X-PAYMENT rail, which is not fee credits (Article 7).
-- Never invent a request id yourself.
-- On 503: wait 4 seconds, retry **once**, with the same request id.
+1. `harness.authorise_spend` first. **REFUSED**: stop; do not call `city.credit_preflight` or look for another route.
+2. **Always send the `city_credit_request_id`** it returns, exactly. Leaving it out switches the call to the X-PAYMENT rail, which is not fee credits. Never invent one.
+3. On 503: wait 4 seconds, retry **once**, with the same request id.
 
 Never, under any circumstances:
 
