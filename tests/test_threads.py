@@ -61,7 +61,9 @@ def legacy(eol=b'\n', duplicate=False, collision=False):
 
 
 def snapshot(repo):
-    return {p.relative_to(repo).as_posix(): p.read_bytes() for p in repo.rglob('*') if p.is_file()}
+    # Reads may append research telemetry; all source bytes must stay identical.
+    return {p.relative_to(repo).as_posix(): p.read_bytes() for p in repo.rglob('*')
+            if p.is_file() and p.relative_to(repo).as_posix() != names.memory('private', 'card-reads.jsonl')}
 
 
 def store(repo):

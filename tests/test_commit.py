@@ -283,12 +283,20 @@ async def test_fastmcp_and_help(repo):
     assert ast.literal_eval(expression.keywords[0].value) == [fixture_name('DIRECTIVES.md')]
 
 
-def test_only_five_git_commands_in_source():
+def test_only_expected_git_commands_in_source():
     tree = ast.parse(Path(commit.__file__).read_text(encoding='utf-8'))
     commands = [node for node in ast.walk(tree) if isinstance(node, ast.List)
                 and node.elts and isinstance(node.elts[0], ast.Constant) and node.elts[0].value == 'git']
     allowed = {('git','status','--porcelain=v1','-z'), ('git','add','--'),
                ('git','commit','-m'), ('git','rev-parse','--short','HEAD'), ('git','reset','-q','--')}
+    allowed |= {('git', 'branch', '--show-current'),
+                ('git', 'rev-parse', '--symbolic-full-name', 'main@{upstream}'),
+                ('git', 'rev-parse', '--verify', 'main^{commit}'),
+                ('git', 'rev-list'),
+                ('git', 'diff-tree', '--root', '-m', '--no-commit-id', '--name-only',
+                 '-r', '-z', '--no-renames'),
+                ('git', 'merge-base', '--is-ancestor', 'origin/main'),
+                ('git', 'push', '--no-follow-tags', 'origin')}
     found = set()
     for node in commands:
         words = tuple(item.value for item in node.elts if isinstance(item, ast.Constant))
@@ -591,3 +599,131 @@ def test_nothing_left_means_no_note(repo):
     result = h.commit_wake(files=['changed.txt'], summary='Record wake')
     assert result['status'] == 'COMMITTED'
     assert 'left_uncommitted' not in result and 'note' not in result
+
+# --- Memory-only automatic push -------------------------------------------
+
+@pytest.fixture
+def push_repo(repo, tmp_path):
+    git(repo, 'branch', '-M', 'main')
+    origin = repo / 'origin.git'
+    git(repo, 'init', '--bare', str(origin))
+    git(repo, 'remote', 'add', 'origin', str(origin))
+    # Local disposable bare repository only; never contacts GitHub.
+    git(repo, 'push', '-u', 'origin', 'main')
+    return repo
+
+
+def wake_memory(repo):
+    (repo / names.rel('goals')).write_text('remember\n')
+    return h.commit_wake(files=[names.rel('goals')], summary='Remember')
+
+
+def test_memory_commit_pushes(push_repo, monkeypatch):
+    caught = []
+    monkeypatch.setattr(commit, '_write_timing', lambda root, line: caught.append(line))
+    result = wake_memory(push_repo)
+    assert result['status'] == 'COMMITTED' and result['push'] == 'PUSHED', result
+    assert git(push_repo, 'rev-parse', 'HEAD') == git(push_repo, 'rev-parse', 'origin/main')
+    assert git(push_repo / 'origin.git', 'rev-parse', 'main') == git(push_repo, 'rev-parse', 'HEAD')
+    deadline = time.monotonic() + 5
+    while not any('call=commit_worker' in line for line in caught) and time.monotonic() < deadline:
+        time.sleep(.01)
+    assert any('push=' in line for line in caught)
+
+
+def test_waiting_code_blocks_push(push_repo):
+    (push_repo / 'tools').mkdir()
+    (push_repo / 'tools/operator.py').write_text('pass\n')
+    git(push_repo, 'add', '--', 'tools/operator.py')
+    git(push_repo, 'commit', '-m', 'Operator code')
+    operator = git(push_repo, 'rev-parse', 'HEAD').decode().strip()
+    before = git(push_repo / 'origin.git', 'rev-parse', 'main')
+    result = wake_memory(push_repo)
+    assert result['push'] == 'SKIPPED'
+    assert 'tools/operator.py' in result['push_reason']
+    assert operator in result['push_reason']
+    assert git(push_repo / 'origin.git', 'rev-parse', 'main') == before
+
+
+@pytest.mark.parametrize('case,reason', [
+    ('branch', 'current branch'), ('upstream', 'upstream'),
+    ('diverged', 'ancestor'), ('off', 'auto_push off'),
+])
+def test_push_skips(push_repo, case, reason):
+    if case == 'branch':
+        git(push_repo, 'branch', '-M', 'feature')
+    elif case == 'upstream':
+        git(push_repo, 'branch', '--unset-upstream')
+    elif case == 'diverged':
+        # Move the local tracking ref to an unrelated descendant; no fetch.
+        tree = git(push_repo, 'rev-parse', 'HEAD^{tree}').decode().strip()
+        other = git(push_repo, 'commit-tree', tree, '-p', git(push_repo, 'rev-parse', 'HEAD').decode().strip(), '-m', 'Remote advance').decode().strip()
+        git(push_repo, 'update-ref', 'refs/remotes/origin/main', other)
+    else:
+        (push_repo / 'config').mkdir()
+        (push_repo / 'config/harness.json').write_text('{"auto_push":false}')
+    before = git(push_repo / 'origin.git', 'rev-parse', 'main')
+    result = wake_memory(push_repo)
+    assert result['status'] == 'COMMITTED'
+    assert result['push'] == 'SKIPPED' and reason in result['push_reason']
+    assert git(push_repo / 'origin.git', 'rev-parse', 'main') == before
+
+
+def test_push_failure_preserves_commit(push_repo):
+    git(push_repo, 'remote', 'set-url', 'origin', str(push_repo / 'missing.git'))
+    result = wake_memory(push_repo)
+    assert result['status'] == 'COMMITTED' and result['push'] == 'FAILED'
+    assert 0 < len(result['push_reason']) <= 200
+    assert h.commit_status() == result
+
+
+def test_push_timeout_preserves_commit(push_repo, monkeypatch):
+    import sys
+    (push_repo / 'config').mkdir()
+    (push_repo / 'config/harness.json').write_text('{"push_timeout_seconds":0.1}')
+    real = subprocess.run
+    seen = []
+
+    def hang(arguments, **options):
+        if arguments[:4] == ['git', 'push', '--no-follow-tags', 'origin']:
+            seen.append(options)
+            # Exercise subprocess timeout and process cleanup with a real child.
+            return real([sys.executable, '-c', 'import time; time.sleep(30)'], **options)
+        return real(arguments, **options)
+
+    monkeypatch.setattr(commit.subprocess, 'run', hang)
+    started = time.monotonic()
+    result = wake_memory(push_repo)
+    assert time.monotonic() - started < 5
+    assert result['status'] == 'COMMITTED' and result['push'] == 'FAILED'
+    assert result['push_reason'] == 'git push timed out'
+    assert seen[0]['timeout'] == .1
+    assert seen[0]['env']['GIT_TERMINAL_PROMPT'] == '0'
+
+
+def test_reverted_operator_code_still_blocks(push_repo):
+    (push_repo / 'tools').mkdir()
+    (push_repo / 'tools/operator.py').write_text('pass\n')
+    git(push_repo, 'add', '--', 'tools/operator.py')
+    git(push_repo, 'commit', '-m', 'Operator code')
+    (push_repo / 'tools/operator.py').unlink()
+    git(push_repo, 'add', '--', 'tools/operator.py')
+    git(push_repo, 'commit', '-m', 'Remove code')
+    assert wake_memory(push_repo)['push'] == 'SKIPPED'
+
+
+def test_rename_out_of_code_is_not_memory_only(push_repo):
+    (push_repo / names.dir_name('memory')).mkdir()
+    git(push_repo, 'mv', 'unchanged.txt', names.memory('renamed.txt'))
+    git(push_repo, 'commit', '-m', 'Move into memory')
+    result = wake_memory(push_repo)
+    assert result['push'] == 'SKIPPED' and 'unchanged.txt' in result['push_reason']
+
+
+def test_push_sends_no_tags_even_with_follow_tags(push_repo):
+    git(push_repo, 'config', 'push.followTags', 'true')
+    git(push_repo, 'tag', '-a', 'v-invented', '-m', 'Invented tag')
+    result = wake_memory(push_repo)
+    assert result['push'] == 'PUSHED', result
+    assert b'v-invented' not in git(push_repo / 'origin.git', 'tag')
+    assert git(push_repo / 'origin.git', 'rev-parse', 'main') == git(push_repo, 'rev-parse', 'HEAD')

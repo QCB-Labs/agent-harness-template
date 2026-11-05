@@ -11,7 +11,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from tools import paths, release, names as naming
+from tools import commit_scope, paths, release, names as naming
 
 
 RESULT_PATH = Path(naming.memory("private", "commit-result.json"))
@@ -122,7 +122,8 @@ def _environment(for_commit: bool = False) -> dict:
     return environment
 
 
-def _run(root: Path, arguments: list[str], extra: dict | None = None) -> subprocess.CompletedProcess:
+def _run(root: Path, arguments: list[str], extra: dict | None = None,
+         timeout: float | None = None) -> subprocess.CompletedProcess:
     environment = _environment(arguments[1] == "commit")
     environment.update(extra or {})
     # Git never reads input here. Without this it inherits the MCP server's
@@ -131,7 +132,8 @@ def _run(root: Path, arguments: list[str], extra: dict | None = None) -> subproc
                           stdout=subprocess.PIPE,
                           # Porcelain output is a binary record stream: Git warnings
                           # must not become part of its first path.
-                          stderr=subprocess.PIPE if arguments[1] == "status" else subprocess.STDOUT)
+                          stderr=subprocess.PIPE if arguments[1] == "status" else subprocess.STDOUT,
+                          timeout=timeout)
 
 
 TRACE_KEEP = 20
@@ -279,6 +281,70 @@ def wait_seconds(root: Path) -> float:
         return 360
 
 
+def _push_settings(root: Path) -> tuple[bool, float]:
+    try:
+        config = json.loads((root / "config/harness.json").read_text(encoding="utf-8"))
+        timeout = config.get("push_timeout_seconds", 60)
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not 0 < timeout <= 60:
+            timeout = 60
+        return config.get("auto_push", True) is not False, timeout
+    except (OSError, ValueError, TypeError, AttributeError):
+        return True, 60
+
+
+def _push_memory(root: Path) -> dict:
+    """Fail closed on local checks; never fetch or push another ref."""
+    enabled, timeout = _push_settings(root)
+
+    def skipped(reason: str) -> dict:
+        return {"push": "SKIPPED", "push_reason": reason}
+
+    def checked(arguments: list[str]) -> bytes:
+        result = _run(root, arguments)
+        if result.returncode:
+            raise ValueError("git check failed")
+        return result.stdout
+
+    try:
+        if not enabled:
+            return skipped("auto_push off")
+        if checked(["git", "branch", "--show-current"]).strip() != b"main":
+            return skipped("current branch is not main")
+        upstream = _run(root, ["git", "rev-parse", "--symbolic-full-name", "main@{upstream}"])
+        if upstream.returncode or upstream.stdout.strip() != b"refs/remotes/origin/main":
+            return skipped("main has no origin/main upstream")
+        # Check and push one fixed commit, so a commit made during the check is never pushed unchecked.
+        head = checked(["git", "rev-parse", "--verify", "main^{commit}"]).decode("ascii").strip()
+        commits = checked(["git", "rev-list", f"origin/main..{head}"]).decode("ascii").splitlines()
+        for revision in commits:
+            # Compare merges against every parent, and keep both sides of renames.
+            names = commit_scope._paths(checked([
+                "git", "diff-tree", "--root", "-m", "--no-commit-id", "--name-only",
+                "-r", "-z", "--no-renames", revision]))
+            for name in names:
+                if name not in commit_scope.MEMORY_FILES and not name.startswith(commit_scope.MEMORY_PREFIXES):
+                    return skipped(f"non-memory commit {revision}: {name}")
+        ancestor = _run(root, ["git", "merge-base", "--is-ancestor", "origin/main", head])
+        if ancestor.returncode:
+            return skipped("origin/main is not an ancestor of main")
+    except (OSError, ValueError, UnicodeError):
+        return skipped("git safety check failed")
+    try:
+        # Neither a terminal prompt nor the credential manager's sign-in window.
+        pushed = _run(root, ["git", "push", "--no-follow-tags", "origin", f"{head}:refs/heads/main"],
+                      {"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"},
+                      timeout=timeout)
+        if not pushed.returncode:
+            return {"push": "PUSHED"}
+        lines = pushed.stdout.decode("utf-8", errors="replace").splitlines()
+        reason = next((line for line in reversed(lines) if line.strip()), "git push failed")[:200]
+    except subprocess.TimeoutExpired:
+        reason = "git push timed out"
+    except OSError:
+        reason = "git push could not run"
+    return {"push": "FAILED", "push_reason": reason}
+
+
 def commit_wake(root: Path, files: list[str], summary: str, load_budget, lock: threading.Lock) -> dict:
     started = time.monotonic()
     timing: dict = {"call": "commit_wake", "id": secrets.token_hex(4)}
@@ -416,6 +482,9 @@ def _commit_wake(root: Path, files: list[str], summary: str, load_budget, lock: 
                         times["rev_parse"] = time.monotonic() - mark
                         result = {"status": "COMMITTED", "commit": head.stdout.decode().strip(),
                                   "message": message, "files": names}
+                        mark = time.monotonic()
+                        result.update(_push_memory(root))
+                        times["push"] = time.monotonic() - mark
                         if kept:
                             result["harness_files"] = kept
                         left = _left_uncommitted(changes, everything)

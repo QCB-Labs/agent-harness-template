@@ -428,3 +428,55 @@ def test_malformed_receipt_fails_closed(
 
     status = phase.unknown_email_status(CONVERSATION_B)
     assert status == {"available": False, "reason": "malformed_receipt"}
+
+
+# --- memory readers: the ID labels the read log, never gates the read -------
+
+def test_hook_adds_id_to_memory_readers_when_host_has_one() -> None:
+    for tool_name in session_context_hook.METERED_TOOLS:
+        assert session_context_hook.process({
+            "conversationId": CONVERSATION_A,
+            "toolCall": {"name": tool_name, "args": {}},
+        }) == {"decision": "allow", "overwrite": {"_conversationId": CONVERSATION_A}}, tool_name
+
+
+@pytest.mark.parametrize("conversation_id", [None, "", "not-a-uuid"])
+def test_hook_never_denies_a_memory_reader(conversation_id: str | None) -> None:
+    for tool_name in session_context_hook.METERED_TOOLS:
+        assert session_context_hook.process({
+            "conversationId": conversation_id,
+            "toolCall": {"name": tool_name, "args": {}},
+        }) == {"decision": "allow"}, tool_name
+        server, tool = tool_name.split(".")
+        assert session_context_hook.process({
+            "conversationId": conversation_id,
+            "toolCall": {"name": "call_mcp_tool", "args": {
+                "ServerName": server, "ToolName": tool, "Arguments": {}}},
+        }) == {"decision": "allow"}, tool_name
+
+
+def test_hook_wrapper_adds_id_to_memory_readers() -> None:
+    result = session_context_hook.process({
+        "conversationId": CONVERSATION_A,
+        "toolCall": {"name": "call_mcp_tool", "args": {
+            "ServerName": "harness", "ToolName": "recall", "Arguments": {"tags": ["x"]}}},
+    })
+    assert result == {"decision": "allow", "overwrite": {
+        "Arguments": {"tags": ["x"], "_conversationId": CONVERSATION_A}}}
+
+
+def test_every_metered_reader_gets_the_host_id() -> None:
+    # Brief 52 metered these readers, but the hook only bound the private
+    # tools, so their read-log lines had no conversation (found S79).
+    import inspect
+    import re
+    from tools import harness_mcp
+    source = inspect.getsource(harness_mcp)
+    metered = set(re.findall(r"@_meter_memory_read\n(?:@\w+\n)*def (\w+)", source))
+    metered |= {"recall", "read_card", "read_wake_card"}
+    bound = set(session_context_hook._METERED) | {
+        function for server, function in session_context_hook._TARGETS if server == "harness"}
+    assert metered - bound == set()
+    for name in session_context_hook._METERED:
+        function = inspect.unwrap(getattr(harness_mcp, name))
+        assert "conversation_id" in inspect.signature(function).parameters, name

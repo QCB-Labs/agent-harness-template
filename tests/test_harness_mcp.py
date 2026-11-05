@@ -841,6 +841,7 @@ async def test_server_exposes_exactly_its_registered_tools() -> None:
         names.tool("list_continents"),
         names.tool("query_almanac"),
         names.tool("update_almanac"),
+        names.tool("read_my_record"),
         names.tool("read_almanac_status"),
         names.tool("read_place"),
         names.tool("record_place"),
@@ -933,6 +934,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
         names.tool("list_continents"),
         names.tool("query_almanac"),
         names.tool("update_almanac"),
+        names.tool("read_my_record"),
         names.tool("read_almanac_status"),
         names.tool("read_place"),
         names.tool("record_place"),
@@ -962,7 +964,7 @@ async def test_stdio_client_can_call_tools_end_to_end(tmp_path: Path) -> None:
     for module in ("phase.py", "authority.py", "paths.py", "release.py",
                    "mail.py", "correspondents.py", "credentials.py",
                    "canary_check.py", "profile.py", "names.py",
-                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py", "threads.py", "driver_record.py", "commit.py", "verdicts.py", "casefiles.py"):
+                   "outgoing_check.py", "cards.py", "stop_marker.py", "goals.py", "threads.py", "driver_record.py", "commit.py", "verdicts.py", "casefiles.py", "commit_scope.py", "my_record.py"):
         shutil.copy2(Path(harness_mcp.__file__).parent / module, tools_dir / module)
     # Reader descriptions come from settings, so this standalone server fixture
     # includes the same settings bytes as its copied tool modules.
@@ -1495,7 +1497,7 @@ async def test_payment_rails_are_absent_from_the_harness() -> None:
 
     tools = await harness_mcp.mcp.list_tools()
     assert "_send_email" not in [tool.name for tool in tools]
-    assert len(tools) == 71
+    assert len(tools) == 72
 
 
 

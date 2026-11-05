@@ -32,6 +32,41 @@ TARGET_TOOLS = frozenset(
 )
 
 
+# Memory readers (brief 52's read meter): the ID only labels the read-log
+# line, so it is added when the host has one and never required.
+_METERED = (
+    "compute_route",
+    "list_continents",
+    "query_almanac",
+    "read_almanac_status",
+    "read_card",
+    "read_city_rules",
+    "read_goal",
+    "read_goals",
+    "read_governance",
+    "read_identity",
+    "read_last_seen",
+    "read_lessons",
+    "read_map",
+    "read_open_threads",
+    "read_operator",
+    "read_place",
+    "read_project",
+    "read_recent_journal",
+    "read_registry",
+    "read_resident",
+    "read_thread",
+    "read_threads",
+    "read_wake_card",
+    "read_wishlist",
+    "read_work",
+    "read_works_index",
+    "recall",
+    "recover_unrecorded",
+)
+METERED_TOOLS = frozenset(f"harness.{names.tool(function)}" for function in _METERED)
+
+
 def _canonical_uuid(value: object) -> str | None:
     if not isinstance(value, str):
         return None
@@ -67,12 +102,21 @@ def process(payload: object) -> dict[str, object]:
             "overwrite": {"_conversationId": conversation_id},
         }
 
+    if tool_name in METERED_TOOLS:
+        if conversation_id is None:
+            return {"decision": "allow"}
+        return {
+            "decision": "allow",
+            "overwrite": {"_conversationId": conversation_id},
+        }
+
     # AGY lazy tool wrapper (e.g., call_mcp_tool with ServerName and ToolName)
     if tool_name == "call_mcp_tool":
         server_name = tool_args.get("ServerName")
         target_tool = tool_args.get("ToolName")
         qualified_name = f"{server_name}.{target_tool}"
-        if qualified_name in TARGET_TOOLS:
+        metered = qualified_name in METERED_TOOLS
+        if qualified_name in TARGET_TOOLS or (metered and conversation_id is not None):
             if conversation_id is None:
                 return {
                     "decision": "deny",

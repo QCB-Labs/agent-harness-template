@@ -751,15 +751,13 @@ def read_card(memory_root: Path, card_id: str, history: bool = False, *,
     for _, card in _jsonl_cards(cards_path):
         if card["id"] == card_id:
             versions.append(card)
-    if not versions:
-        return {"error": "NOT_FOUND", "id": card_id}
-    result: dict[str, Any] = {"card": versions[-1]}
-    if history:
+    result: dict[str, Any] = {"card": versions[-1]} if versions else {"error": "NOT_FOUND", "id": card_id}
+    if history and versions:
         result["history"] = versions
     if record_read:
-        _append_read(memory_root, {"time": _utc_now(), "wake": wake, "query": {"read_card": card_id, "history": history},
-                                   "ids": [card_id], "refused": False, "conversation": conversation,
-                                   "session": session})
+        record_read_result(memory_root, "read_card", result, wake=wake, conversation=conversation,
+                           session=session, ids=[card_id] if versions else [], refused=not versions,
+                           query={"read_card": card_id, "history": history})
     return result
 
 
@@ -941,9 +939,9 @@ def recall(
         )
     _limit_recall_answer(result, int(config.get("recall_answer_bytes", 24000)))
     if record_read:
-        _append_read(memory, {"time": _utc_now(), "wake": wake, "query": result["searched"],
-                              "ids": [card["id"] for card in returned], "refused": refused,
-                              "conversation": conversation, "session": session})
+        record_read_result(memory, "recall", result, wake=wake, conversation=conversation,
+                           session=session, ids=[card["id"] for card in returned],
+                           refused=refused, query=result["searched"])
     return result
 
 
@@ -1183,7 +1181,7 @@ def _wake_added_section(
     entries = []
     for card in candidates:
         if is_index:
-            tags = ", ".join(t for t in card.get("tags", []) if t.startswith(("resident:", "place:")))
+            tags = ", ".join(t for t in card.get("tags", []) if t.startswith(("resident:", "place:", "post:", "name:")))
             entries.append(f"- {card['id']}: {card.get('title') or card['id']} [{tags}]")
         else:
             entries.append(card["text"])
@@ -1368,7 +1366,7 @@ def read_wake_card(
         if name == "Open threads (index)" and new_threads:
             thread_cfg = thread_files.settings(root)
             entries = [thread_cfg["wake_line"].format(title=c["title"],
-                       tags=", ".join(t for t in c["tags"] if t.startswith(("place:", "resident:"))))
+                       tags=", ".join(t for t in c["tags"] if t.startswith(("place:", "resident:", "post:", "name:"))))
                        for c in candidates]
             def tail(left):
                 return [thread_cfg["wake_omitted"].format(count=left)] if left else []
@@ -1478,6 +1476,7 @@ def read_wake_card(
     # The text goes out once. Sections carry sizes and counts only, so the card
     # doesn't cost twice its length in the agent's context.
     summary = [{key: value for key, value in section.items() if key not in {"text", "ids"}} for section in sections]
+    result = {"text": rendered, "sections": summary, "total_bytes": _utf8_bytes(rendered), "dropped_cards": dropped}
     if record_read:
         shown: list[str] = []
         for section in sections:
@@ -1486,10 +1485,27 @@ def read_wake_card(
                 for one in expanded:
                     if one and one not in shown:
                         shown.append(one)
-        _append_read(memory, {"time": _utc_now(), "wake": wake, "query": {"wake_card": True},
-                              "ids": shown, "refused": False, "conversation": conversation,
-                              "session": session})
-    return {"text": rendered, "sections": summary, "total_bytes": _utf8_bytes(rendered), "dropped_cards": dropped}
+        record_read_result(memory, "read_wake_card", result, wake=wake, conversation=conversation,
+                           session=session, ids=shown, query={"wake_card": True})
+    return result
+
+
+def record_read_result(
+    memory: Path, tool: str, result: Any, *, wake: str,
+    conversation: str | None = None, session: str = "wake",
+    ids: list[str] | None = None, refused: bool = False, query: Any = None,
+) -> None:
+    """Meter the exact FastMCP text answer without making reads depend on logging."""
+    try:
+        text = result if isinstance(result, str) else to_json(result, fallback=str, indent=2).decode("utf-8")
+        event = {"time": _utc_now(), "wake": wake, "tool": tool, "bytes": _utf8_bytes(text),
+                 "ids": ids or [], "refused": refused, "conversation": conversation, "session": session}
+        if query is not None:
+            event["query"] = query
+        _append_read(memory, event)
+    except Exception:
+        # Research telemetry must never change or prevent the memory answer.
+        pass
 
 
 def _append_read(memory: Path, event: dict[str, Any]) -> None:

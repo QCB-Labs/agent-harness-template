@@ -1,1 +1,1 @@
-{"commit_wait_seconds":150}
+{"commit_wait_seconds": 150, "push_timeout_seconds": 60, "auto_push": true}

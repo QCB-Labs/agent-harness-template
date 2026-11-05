@@ -73,6 +73,7 @@ from tools import threads as threads_module
 from tools import commit as commit_module
 from tools import verdicts
 from tools import casefiles
+from tools import my_record as my_record_module
 
 
 def _resolve_repo() -> Path:
@@ -233,8 +234,9 @@ def _recut_after_write(logical: str, path: Path) -> None:
 
 
 def _current_wake_label() -> str:
-    """The wake a read belongs to: the number the next mission log will take."""
-    return names.wake_id(_load_budget().get("wake_count", 0) + 1)
+    """Real reads use the next wake; sealed reads follow the completed wake."""
+    completed = _load_budget().get("wake_count", 0)
+    return names.wake_id(completed + (0 if _session_kind() == "sealed" else 1))
 
 
 SEALED_MARKER = Path(names.memory("private", "sealed-session"))
@@ -250,26 +252,57 @@ def _session_kind() -> str:
     return "sealed" if (REPO / SEALED_MARKER).exists() else "wake"
 
 
+def _meter_memory_read(fn):
+    """Record one returned answer, preserving the tool's result and private phase."""
+    signature = inspect.signature(fn)
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        result = fn(*args, **kwargs)
+        try:
+            if not stop_marker.marker_present(REPO):
+                bound = signature.bind(*args, **kwargs)
+                refused = isinstance(result, str) and result.startswith(("REFUSED", "BLOCKED", f"{fn.__name__} REFUSED:"))
+                cards_module.record_read_result(
+                    REPO / names.dir_name("memory"), fn.__name__, result, wake=_current_wake_label(),
+                    conversation=normalize_conversation_id(bound.arguments.get("conversation_id")),
+                    session=_session_kind(), refused=refused,
+                )
+        except Exception:
+            # A failed meter cannot fail a successful read.
+            pass
+        return result
+    return wrapper
+
+
+
 @mcp.tool(name=names.tool("read_identity"))
-def read_identity() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_identity(conversation_id: HostConversationId = None) -> str:
     """Return the agent's complete identity document."""
     return _read_text(Path(names.rel("identity")), f"{names.rel('identity')} not found")
 
 
 @mcp.tool(name=names.tool("read_governance"))
-def read_governance() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_governance(conversation_id: HostConversationId = None) -> str:
     """Return the agent's complete governance document."""
     return _read_text(Path(names.rel("governance")), f"{names.rel('governance')} not found")
 
 
 @mcp.tool(name=names.tool("read_operator"))
-def read_operator() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_operator(conversation_id: HostConversationId = None) -> str:
     """Return the operator's file. Read-only: no harness tool writes it."""
     return _read_text(Path(names.rel("operator")), f"{names.rel('operator')} not found")
 
 
 @mcp.tool(name=names.tool("read_goals"))
-def read_goals() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_goals(conversation_id: HostConversationId = None) -> str:
     """Return standing ambition, goals and projects, preserving any legacy list."""
     with _file_lock("goals"):
         path = REPO / names.rel("goals")
@@ -352,19 +385,25 @@ def read_wake_card(here_tags: list[str] = [],
 
 
 @mcp.tool(name=names.tool("read_lessons"))
-def read_lessons() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_lessons(conversation_id: HostConversationId = None) -> str:
     """Return the agent's accumulated lessons."""
     return _read_text(Path(names.rel("lessons")), "")
 
 
 @mcp.tool(name=names.tool("read_city_rules"))
-def read_city_rules() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_city_rules(conversation_id: HostConversationId = None) -> str:
     """Return the agent's city rules."""
     return _read_text(Path(names.rel("city_rules")), "")
 
 
 @mcp.tool(name=names.tool("read_wishlist"))
-def read_wishlist() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_wishlist(conversation_id: HostConversationId = None) -> str:
     """Return the agent's capability wishlist."""
     return _read_text(Path(names.rel("wishlist")), "")
 
@@ -373,7 +412,9 @@ UNRECORDED_PREFIX = "_UNRECORDED-"
 
 
 @mcp.tool(name=names.tool("read_recent_journal"))
-def read_recent_journal(n: int = 5) -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_recent_journal(n: int = 5, conversation_id: HostConversationId = None) -> str:
     """Return the newest n journal entries in chronological order."""
     journal_dir = REPO / names.rel("journal")
     # Crash dumps are not journal entries. "_" sorts after digits, so a
@@ -747,6 +788,8 @@ def request_new_correspondent(proposed_name: str, proposed_email: str,
 
 
 @mcp.tool(name=names.tool("read_correspondence"))
+@_bind_host_conversation_id
+@_meter_memory_read
 @enters_private
 def read_correspondence(
     counterpart: str | None = None,
@@ -895,6 +938,7 @@ def commit_wake(files: list[str], summary: str) -> dict:
     A name git does not see as changed is refused with the list of files
     that did change. After a commit, changed files of yours that were not
     named are listed under left_uncommitted, with a note.
+    Memory-only commits are pushed to GitHub afterwards, and the result says whether.
     If STILL_RUNNING is returned, call commit_status() once before closing.
     """
     return commit_module.commit_wake(REPO, files, summary, _load_budget, _file_lock("commit_wake"))
@@ -911,8 +955,14 @@ def _empty_last_seen() -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("read_last_seen"))
-def read_last_seen() -> dict[str, object]:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_last_seen(conversation_id: HostConversationId = None) -> dict[str, object]:
     """Return the durable markers for feeds the agent has already read."""
+    return _load_last_seen()
+
+
+def _load_last_seen() -> dict[str, object]:
     try:
         with (REPO / names.memory("seen.json")).open(encoding="utf-8") as seen_file:
             return json.load(seen_file)
@@ -933,7 +983,7 @@ def update_last_seen(feed: str, last_id: int | str) -> str:
         return "REFUSED — feed name cannot be empty."
 
     with _file_lock("seen"):
-        state = read_last_seen()
+        state = _load_last_seen()
         feeds = state.get("feeds")
         if not isinstance(feeds, dict):
             feeds = {}
@@ -1014,7 +1064,9 @@ def write_journal(content: str, conversation_id: HostConversationId = None) -> s
 
 
 @mcp.tool(name=names.tool("recover_unrecorded"))
-def recover_unrecorded() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def recover_unrecorded(conversation_id: HostConversationId = None) -> str:
     """Return any journal entries a previous session started but never filed.
 
     ``write_journal`` writes a crash dump before the real entry and removes it
@@ -1170,7 +1222,9 @@ def close_project(title: str, outcome: str, reason: str = "") -> str:
 
 
 @mcp.tool(name=names.tool("read_goal"))
-def read_goal(name: str) -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_goal(name: str, conversation_id: HostConversationId = None) -> str:
     """One goal in full."""
     with _file_lock("goals"):
         try:
@@ -1183,7 +1237,9 @@ def read_goal(name: str) -> str:
 
 
 @mcp.tool(name=names.tool("read_project"))
-def read_project(title: str, closed_in: str = "") -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_project(title: str, closed_in: str = "", conversation_id: HostConversationId = None) -> str:
     """Returns the open project or latest closing; closed_in selects a closing by wake."""
     with _file_lock("goals"):
         try:
@@ -1717,7 +1773,9 @@ def _save_map(data: dict[str, object]) -> None:
 
 
 @mcp.tool(name=names.tool("read_map"))
-def read_map(place_id: int | None = None) -> dict[str, object]:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_map(place_id: int | None = None, conversation_id: HostConversationId = None) -> dict[str, object]:
     """Read the cached map of known places.
 
     If *place_id* is given, return that place's neighbourhood: itself, its
@@ -1800,11 +1858,14 @@ def update_map(places: list[dict[str, object]]) -> str:
 
 
 @mcp.tool(name=names.tool("compute_route"))
+@_bind_host_conversation_id
+@_meter_memory_read
 def compute_route(from_place_id: int | None = None, to_place_id: int | None = None,
                   current_id: int | None = None, target_id: int | None = None,
                   from_id: int | None = None, to_id: int | None = None,
                   from_place: int | None = None, to_place: int | None = None,
-                  origin_id: int | None = None, destination_id: int | None = None) -> dict[str, object]:
+                  origin_id: int | None = None, destination_id: int | None = None,
+                  conversation_id: HostConversationId = None) -> dict[str, object]:
     """Compute a legal path between two known places in the almanac.
 
     Returns step-by-step route with directions (UP to parent vs DOWN to child),
@@ -1950,7 +2011,9 @@ def _save_registry(data: dict[str, object]) -> None:
 
 
 @mcp.tool(name=names.tool("read_registry"))
-def read_registry(handle: str | None = None) -> dict[str, object]:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_registry(handle: str | None = None, conversation_id: HostConversationId = None) -> dict[str, object]:
     """Read the agent's relationship memory.
 
     If *handle* is given, return that resident's full record including
@@ -2294,7 +2357,9 @@ def _save_almanac(data: dict[str, object]) -> None:
 
 
 @mcp.tool(name=names.tool("list_continents"))
-def list_continents() -> dict[str, object]:
+@_bind_host_conversation_id
+@_meter_memory_read
+def list_continents(conversation_id: HostConversationId = None) -> dict[str, object]:
     """Return top-level continents with their visited status, counts and permissions.
 
     Direct children of [195] the world. Includes ID, name, owner,
@@ -2329,6 +2394,8 @@ def list_continents() -> dict[str, object]:
 
 
 @mcp.tool(name=names.tool("query_almanac"))
+@_bind_host_conversation_id
+@_meter_memory_read
 def query_almanac(
     continent_id: int | None = None,
     parent_id: int | None = None,
@@ -2338,6 +2405,7 @@ def query_almanac(
     open_to: str | None = None,
     limit: int = 15,
     offset: int = 0,
+    conversation_id: HostConversationId = None,
 ) -> dict[str, object]:
     """Search known places, including places you have not visited.
 
@@ -2495,8 +2563,40 @@ def update_almanac(places: list[dict[str, object]]) -> str:
     return f"Almanac updated: {added} added, {updated} updated, {len(places_dict)} total places."
 
 
+@mcp.tool(name=names.tool("read_my_record"))
+def read_my_record(word: str | None = None, timing: bool = False, by: str = "week",
+              through: str | None = None) -> dict[str, object]:
+    """Count your own public notes, from the city's public record.
+
+    Use it when someone cites numbers from your record, to check before you
+    agree. word counts one word (with its ordinary forms) or a short exact
+    phrase: notes containing it, uses, forms counted, first and last use, and
+    a table by week or month with the places each use was in, and the things
+    you made that match the word, so a count comes with its context. timing=True counts your notes by UTC hour and by
+    minute past the hour. through="YYYY-MM-DD" stops at their cut-off.
+    Examples: read_my_record(word="hop"), read_my_record(word="beacon",
+    by="month", through="2026-10-29"), read_my_record(timing=True).
+    """
+    phrase, reason = my_record_module.parse(word, timing, by, through)
+    if reason:
+        return {"status": "REFUSED", "reason": f"read_my_record: {reason}"}
+    try:
+        notes, missing = my_record_module.load_notes(through=through, with_bodies=not timing)
+    except my_record_module.RecordUnavailable as exc:
+        return {"status": "UNAVAILABLE", "reason": f"read_my_record: {exc}; nothing was counted"}
+    except Exception as exc:
+        return {"status": "UNAVAILABLE",
+                "reason": f"read_my_record: could not read the city record ({type(exc).__name__}); nothing was counted"}
+    if timing:
+        return my_record_module.count_timing(notes, through=through)
+    answer = my_record_module.count_word(notes, phrase, by=by, through=through, missing=missing)
+    return my_record_module.add_context(answer, phrase, through)
+
+
 @mcp.tool(name=names.tool("read_almanac_status"))
-def read_almanac_status() -> dict[str, object]:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_almanac_status(conversation_id: HostConversationId = None) -> dict[str, object]:
     """Return operational status, place counts, and freshness of memory/almanac.json."""
     almanac = _load_almanac()
     updated_at = almanac.get("updated_at")
@@ -2541,7 +2641,9 @@ def _place_records(places_dir: Path, place_id: int) -> list[Path]:
 
 
 @mcp.tool(name=names.tool("read_place"))
-def read_place(place_id: int | None = None, continent_slug: str | None = None) -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_place(place_id: int | None = None, continent_slug: str | None = None, conversation_id: HostConversationId = None) -> str:
     """Read qualitative field notes for a place or continent."""
     flight_dir = REPO / names.rel("atlas")
     if place_id is not None:
@@ -2670,7 +2772,9 @@ def record_place(
 
 
 @mcp.tool(name=names.tool("read_resident"))
-def read_resident(handle: str | None = None) -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_resident(handle: str | None = None, conversation_id: HostConversationId = None) -> str:
     """Read resident social memory from markdown dossiers.
 
     If handle is provided, returns memory/residents/<handle>.md.
@@ -2905,6 +3009,8 @@ reliability_verdicts: {reliability_yaml}
 
 
 @mcp.tool(name=names.tool("read_drafts"))
+@_bind_host_conversation_id
+@_meter_memory_read
 @enters_private
 def read_drafts(
     slug: str | None = None,
@@ -3062,7 +3168,9 @@ def close_thread(title: str, how_it_closed: str) -> str:
 
 
 @mcp.tool(name=names.tool("read_threads"), description=threads_module.settings(REPO)["read_threads_description"])
-def read_threads(start: int | float | str | bool | None = 1) -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_threads(start: int | float | str | bool | None = 1, conversation_id: HostConversationId = None) -> str:
     with _file_lock("threads"):
         try:
             return threads_module.read_threads(REPO, start)
@@ -3071,7 +3179,9 @@ def read_threads(start: int | float | str | bool | None = 1) -> str:
 
 
 @mcp.tool(name=names.tool("read_thread"), description=threads_module.settings(REPO)["read_thread_description"])
-def read_thread(title: str, closed_in: str = "") -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_thread(title: str, closed_in: str = "", conversation_id: HostConversationId = None) -> str:
     with _file_lock("threads"):
         try:
             return threads_module.read_thread(REPO, title, closed_in)
@@ -3080,7 +3190,9 @@ def read_thread(title: str, closed_in: str = "") -> str:
 
 
 @mcp.tool(name=names.tool("read_open_threads"))
-def read_open_threads() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_open_threads(conversation_id: HostConversationId = None) -> str:
     """Return the agent's open threads tracking potential returns and inquiries."""
     with _file_lock("threads"):
         if threads_module.exists(REPO):
@@ -3106,13 +3218,17 @@ def update_open_threads(new_text: str) -> str:
 
 
 @mcp.tool(name=names.tool("read_works_index"))
-def read_works_index() -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_works_index(conversation_id: HostConversationId = None) -> str:
     """Return the table of all created and published works in memory/works/index.md."""
     return _read_text(Path(names.rel("works")) / "index.md", "(no works index found)")
 
 
 @mcp.tool(name=names.tool("read_work"))
-def read_work(slug: str) -> str:
+@_bind_host_conversation_id
+@_meter_memory_read
+def read_work(slug: str, conversation_id: HostConversationId = None) -> str:
     """Read a specific work dossier from memory/works/items/<slug>.md."""
     clean_slug = slug.strip().lower()
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,63}", clean_slug):

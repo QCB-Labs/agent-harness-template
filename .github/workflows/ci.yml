@@ -1,10 +1,42 @@
 name: CI
 
 on:
+  # Code changes only: pushes that add session logs and memory don't run the suite.
   push:
     branches: [main]
+    paths:
+      - "tools/**"
+      - "tests/**"
+      - "config/**"
+      - "naming/**"
+      - "naming.json"
+      - "fixtures/**"
+      - "hooks/**"
+      - ".agents/**"
+      - "AGENTS.md"
+      - "STANDING-ORDERS.md"
+      - "agent-profile.json"
+      - "pytest.ini"
+      - "requirements-mcp.txt"
+      - ".github/workflows/**"
   pull_request:
     branches: [main]
+    paths:
+      - "tools/**"
+      - "tests/**"
+      - "config/**"
+      - "naming/**"
+      - "naming.json"
+      - "fixtures/**"
+      - "hooks/**"
+      - ".agents/**"
+      - "AGENTS.md"
+      - "STANDING-ORDERS.md"
+      - "agent-profile.json"
+      - "pytest.ini"
+      - "requirements-mcp.txt"
+      - ".github/workflows/**"
+  workflow_dispatch:
 
 jobs:
   test:
