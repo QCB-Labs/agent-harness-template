@@ -167,10 +167,10 @@ def test_square_and_market_ids_never_become_resident_tags() -> None:
     patterns = load_patterns(CITY)
     tags = extract_tags(
         kind="relationship",
-        text="Rin is Square citizen #688 and Market merchant #42.",
+        text="Rin is Square citizen #9688 and Market merchant #42.",
         patterns=patterns,
     )
-    assert "square:688" in tags
+    assert "square:9688" in tags
     assert "market:42" in tags
     assert not any(tag.startswith("resident:") for tag in tags)
 

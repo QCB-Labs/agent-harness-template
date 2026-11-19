@@ -53,7 +53,7 @@ def legacy(eol=b'\n', duplicate=False, collision=False):
     for i, title in enumerate(titles):
         lines.append('- **' + title + '**')
         if i != 2:
-            lines += [fixture_name('  - **Initiated:** SR-0140'),'  - **Context:** resident #260 at Place 823, café 日本.',
+            lines += [fixture_name('  - **Initiated:** SR-0140'),'  - **Context:** resident #9260 at Place 9823, café 日本.',
                       '  - **Progression:** An invented conversation.','  - **Status:** Pending.']
         lines.append('')
     lines += ['## Resolved threads','','- **Settled first**','  - **Status:** Done.','','- **Settled second**','']
@@ -79,7 +79,7 @@ def wake(repo):
 
 
 def test_shape_updates_verbatim_stands_and_multiline(repo):
-    stands = 'Café 日本\r\nresident #260 at Place 823\r\n'
+    stands = 'Café 日本\r\nresident #9260 at Place 9823\r\n'
     assert h.open_thread(title='Amber', stands=stands) == 'Thread "Amber" opened.'
     path = repo / fixture_name('records/threads/amber.md')
     assert path.read_bytes() == t.settings(repo)['file'].format(title='Amber', stands=stands).encode()
@@ -230,7 +230,7 @@ def test_old_tools_exact_before_and_after_first_file(repo):
 
 def test_index_overflow_sorting_and_wake_header_tags(repo):
     for i in range(150):
-        t.open_thread(repo, f'Thread {i:03} ' + 'é' * 25, f'resident #260 at Place {i + 800}.')
+        t.open_thread(repo, f'Thread {i:03} ' + 'é' * 25, f'resident #9260 at Place {i + 800}.')
         t.update_thread(repo, f'Thread {i:03} ' + 'é' * 25, 'Place 99999.', '', 152+i, '2026-10-11')
     recut(repo, 'threads')
     answer = h.read_threads()
@@ -244,7 +244,7 @@ def test_index_overflow_sorting_and_wake_header_tags(repo):
     write(repo / 'config/cards.json', json.dumps(cfg))
     result = wake(repo)
     section = result['text'].split('## Open threads (index)\n\n')[1].split('\n\n## Rules')[0]
-    assert section.startswith('- Thread 149') and 'resident:260' in section and 'place:949' in section
+    assert section.startswith('- Thread 149') and 'resident:9260' in section and 'place:949' in section
     assert 'place:99999' not in section
     shown = len([line for line in section.splitlines() if line.startswith('- ')])
     assert f'{150-shown} more open threads are not listed; read_threads().' in section
@@ -589,7 +589,7 @@ def test_wake_card_logs_the_threads_it_shows_not_a_prefix(repo):
     # budget skips some of them and still fits short A threads after.
     titles = [(f'Z{i} ' + 'x' * 300) if i % 2 == 0 else f'A{i}' for i in range(8)]
     for title in titles:
-        t.open_thread(repo, title, 'resident #260 at Place 801.')
+        t.open_thread(repo, title, 'resident #9260 at Place 801.')
     recut(repo, 'threads')
     cfg = json.loads((repo / 'config/cards.json').read_bytes())
     cfg['wake_sections']['thread_index'] = 450

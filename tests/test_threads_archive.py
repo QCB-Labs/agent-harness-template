@@ -18,7 +18,7 @@ def write(path, data):
 
 
 def entry(title, place, eol):
-    lines = ['- **' + title + '**:', '  - Context: resident #260 at Place ' + str(place) + ', café 日本.',
+    lines = ['- **' + title + '**:', '  - Context: resident #9260 at Place ' + str(place) + ', café 日本.',
              '  - Status: Done.', '']
     return eol.join(line.encode('utf-8') for line in lines) + eol
 
@@ -121,7 +121,7 @@ def test_recall_returns_archived_entries_only_with_history(repo):
 def test_archived_entry_and_closed_thread_file_are_both_returned(repo):
     write(repo / fixture_name('records/open-matters-archive.md'), archive_bytes())
     recut(repo)
-    h.open_thread(title='Amber again', stands='Resident #260 at Place 9001.')
+    h.open_thread(title='Amber again', stands='Resident #9260 at Place 9001.')
     h.close_thread(title='Amber again', how_it_closed='Settled.')
     found = recall(repo, tags=['place:9001'], kinds=['thread'], history=True)['cards']
     logicals = sorted((card['origin']['logical'] for card in found))
@@ -130,7 +130,7 @@ def test_archived_entry_and_closed_thread_file_are_both_returned(repo):
 
 
 def test_other_reads_are_unchanged_by_the_archive(repo):
-    write(repo / fixture_name('records/open-matters.md'), fixture_name(b'# Open Matters\n\n## Living threads\n\n- **Visit amber**\n  - Status: Pending at Place 823.\n\n'))
+    write(repo / fixture_name('records/open-matters.md'), fixture_name(b'# Open Matters\n\n## Living threads\n\n- **Visit amber**\n  - Status: Pending at Place 9823.\n\n'))
     recut(repo, 'open_threads')
     before_legacy = reads(repo)
     write(repo / fixture_name('records/open-matters-archive.md'), archive_bytes())
@@ -138,7 +138,7 @@ def test_other_reads_are_unchanged_by_the_archive(repo):
     assert reads(repo) == before_legacy
     (repo / fixture_name('records/open-matters-archive.md')).unlink()
     recut(repo)
-    h.open_thread(title='Question nine', stands='Resident #260 at Place 823.')
+    h.open_thread(title='Question nine', stands='Resident #9260 at Place 9823.')
     h.open_thread(title='Question ten', stands='Still open.')
     h.close_thread(title='Question ten', how_it_closed='Answered.')
     before = reads(repo) + (h.read_thread(title='Question nine'), h.read_thread(title='Question ten'))

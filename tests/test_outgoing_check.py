@@ -303,13 +303,13 @@ def test_ordinary_neutral_prose_passes_clean(
     sample_text = (
         "# Activity Log — Cycle 113\n\n"
         "- Resident: Template Agent (#66)\n"
-        "- Location: Place 768, Continent #768\n"
-        "- Explored Place 1130, Place 1131, and Place 1132\n"
-        "- Crafted Thing #4382 for the shared workshop\n"
-        "- Published Note #22951 via the drafting airlock\n"
+        "- Location: Place 9768, Continent #9768\n"
+        "- Explored Place 9130, Place 9131, and Place 9132\n"
+        "- Crafted Thing #94382 for the shared workshop\n"
+        "- Published Note #922951 via the drafting airlock\n"
         "- Contact: mailbox@example.com or peer@example.com\n"
         "- Balances: 3.000000 fee credits and daily quotas\n"
-        "- Trait #295 and Kind #39 describe the state box\n"
+        "- Trait #9295 and Kind #39 describe the state box\n"
     )
     assert check_outgoing(sample_text) == []
 
