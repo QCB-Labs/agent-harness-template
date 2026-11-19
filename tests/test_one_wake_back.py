@@ -183,3 +183,12 @@ def test_first_section_found_under_resolved_heading(tmp_path):
     result = wake(tmp_path, text=log_text(first=first))
     assert section(result, 'What I was doing') == TITLE + '\n\n' + first + OBS + PLAN
     assert section(result, 'What I owe') == '- **Due:** Return the invented cup.\r\n  Keep its label.\r\n'
+
+
+@pytest.mark.parametrize('heading', ['## Waiting, Due and Deferred', '## Waiting, Due, Deferred and Resolved',
+                                     '## Waiting, Due, Deferred and Done'])
+def test_first_heading_reads_new_and_old_names(heading):
+    """The Resolved list left the log; older logs still cut."""
+    import re
+    pattern = json.loads(CONFIG.read_text(encoding='utf-8'))['log_first_heading']
+    assert re.match(pattern, heading + '\r\n- **Waiting:** none.\r\n')

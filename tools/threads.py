@@ -249,6 +249,11 @@ def read_threads(root: Path, start: int = 1) -> str:
 
 
 def read_thread(root: Path, title: str, closed_in: str = '') -> str:
+    return read_thread_file(root, title, closed_in)[1]
+
+
+def read_thread_file(root: Path, title: str, closed_in: str = '') -> tuple[Path, str]:
+    """Resolve the exact source alongside the unchanged reader answer."""
     cfg = settings(root)
     validate_line(title, cfg['errors']['title'])
     path = folder(root) / (slug(title) + '.md')
@@ -256,7 +261,7 @@ def read_thread(root: Path, title: str, closed_in: str = '') -> str:
     if closed_in and not re.fullmatch(rf'{re.escape(names.load()["wake_id"]["prefix"])}[0-9]+(?:-(?:[2-9]|[1-9][0-9]+))?', closed_in):
         raise ThreadError(cfg['errors']['closed_in'])
     if not closed_in and path.is_file() and title_of(text(path)) == title:
-        return text(path)
+        return path, text(path)
     closings = []
     for candidate in files(root, True):
         body = text(candidate)
@@ -283,7 +288,7 @@ def read_thread(root: Path, title: str, closed_in: str = '') -> str:
     answer = matching[0][3]
     if not closed_in and len(closings) > 1:
         answer += '\n\n' + cfg['earlier'].format(wakes=', '.join(selector(item) for item in closings[1:]))
-    return answer
+    return folder(root) / "closed" / matching[0][2], answer
 
 
 def legacy_paths(root: Path) -> tuple[Path, Path, Path]:

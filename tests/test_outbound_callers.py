@@ -42,6 +42,9 @@ def sandbox(tmp_path, monkeypatch):
                          (phase, "REPO_ROOT"), (authority, "REPO_ROOT"), (credentials, "REPO_ROOT"),
                          (credentials, "TOOLS_DIR")]:
         monkeypatch.setattr(module, name, tmp_path)
+    monkeypatch.setenv("OPERATOR_CORRESPONDENTS", json.dumps({
+        "operator": "operator@example.com", "peer": "peer@example.com",
+    }))
     monkeypatch.setenv("AGENT_SESSION_DIR", str(tmp_path / "session"))
     monkeypatch.setenv("AGENT_TRUST_DIR", str(tmp_path / "trust"))
     monkeypatch.setattr(phase, "_now", lambda: NOW)
@@ -58,7 +61,7 @@ def sandbox(tmp_path, monkeypatch):
     monkeypatch.setattr(harness, "_pay_armed", lambda: False)
     monkeypatch.setattr(mail, "file_message", lambda *args, **kwargs: None)
     stored = {"message_id": "message@example.com", "from_address": "peer@example.com", "subject": "Greeting",
-              "scope": "peer", "counterpart": "peer", "thread_references": []}
+              "scope": "public", "counterpart": "peer", "thread_references": []}
     monkeypatch.setattr(mail, "find_filed_message", lambda *args, **kwargs: stored)
     calls = {"smtp": [], "check": [], "stored": stored}
     class SMTP:
@@ -167,7 +170,11 @@ OPERATOR_PATHS = set(MAIL_PATHS) - {"reply_peer", "new_peer"}
 def _mail_call(name, calls):
     if name.startswith("reply_"):
         operator = name == "reply_operator"
-        calls["stored"].update(scope="operator" if operator else "peer", counterpart="operator" if operator else "peer")
+        calls["stored"].update(
+            from_address="operator@example.com" if operator else "peer@example.com",
+            scope="operator" if operator else "public",
+            counterpart="operator" if operator else "peer",
+        )
         return harness.reply_to_message("message@example.com", "Illustrative body", _conversationId=CONVERSATION)
     if name.startswith("new_"):
         return harness.send_new_thread("operator" if name == "new_operator" else "peer", "Greeting", "Illustrative body")

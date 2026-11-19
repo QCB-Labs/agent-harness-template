@@ -14,8 +14,9 @@ separate jobs, deliberately kept apart:
               decides trust: it is trivially spoofable, and this is documented
               rather than relied upon.
 
-Scope is stamped on the stored message at intake, by the harness, from the
-sender classification. Nothing the model supplies can change it later.
+Scope is stamped on the stored message at intake by the harness. Replies
+reclassify the stored sender and refuse inconsistent filing metadata.
+Nothing the model supplies can change the scope.
 
 Email carries conversation only. No message, from any sender, signed or not,
 can authorise anything — see tools/authority.py.
@@ -113,6 +114,14 @@ _INVISIBLE = dict.fromkeys(
 )
 
 
+_LINE_SEPARATORS = str.maketrans({ch: " " for ch in "\r\n\x85\u2028\u2029"})
+
+
+def _single_line(value: object) -> str:
+    """Keep untrusted metadata inside its one filing-header value."""
+    return str(value).translate(_LINE_SEPARATORS).strip()
+
+
 def strip_html(raw: str) -> str:
     """Reduce HTML to plain text, discarding markup rather than rendering it.
 
@@ -197,8 +206,8 @@ def list_attachments(message: Message) -> list[dict]:
             continue
         payload = part.get_payload(decode=True)
         found.append({
-            "filename": decode_header_value(filename)[:200],
-            "content_type": part.get_content_type(),
+            "filename": _single_line(decode_header_value(filename))[:200],
+            "content_type": _single_line(part.get_content_type()),
             "bytes": len(payload) if payload else 0,
         })
     return found
@@ -208,7 +217,7 @@ def decode_header_value(raw: str | None) -> str:
     """Decode an RFC 2047 header into sanitised plain text."""
     if not raw:
         return ""
-    parts = email.header.decode_header(raw)
+    parts = email.header.decode_header(_single_line(raw))
     out = []
     for value, charset in parts:
         if isinstance(value, bytes):
@@ -218,8 +227,8 @@ def decode_header_value(raw: str | None) -> str:
                 out.append(value.decode("utf-8", errors="replace"))
         else:
             out.append(value)
-    text, _ = sanitise_text("".join(out))
-    return text.replace("\n", " ").strip()
+    text, _ = sanitise_text(_single_line("".join(out)))
+    return _single_line(text)
 
 
 def is_autoreply(message: Message) -> bool:
@@ -264,7 +273,7 @@ def parse_message(raw_bytes: bytes) -> InboundMessage:
 
     from_raw = message.get("From", "")
     display, address = email.utils.parseaddr(from_raw)
-    address = address.strip().lower()
+    address = _single_line(address).lower()
     counterpart, scope = classify_sender(address)
 
     body, truncated = extract_body(message)
@@ -276,13 +285,13 @@ def parse_message(raw_bytes: bytes) -> InboundMessage:
     except (TypeError, ValueError):
         stamp = datetime.now(timezone.utc)
 
-    references = (message.get("References") or "").split()
-    in_reply_to = (message.get("In-Reply-To") or "").strip()
+    references = [_single_line(ref) for ref in (message.get("References") or "").split()]
+    in_reply_to = _single_line(message.get("In-Reply-To") or "")
     if in_reply_to and in_reply_to not in references:
         references.append(in_reply_to)
 
     return InboundMessage(
-        message_id=(message.get("Message-ID") or "").strip(),
+        message_id=_single_line(message.get("Message-ID") or ""),
         from_address=address,
         from_display=decode_header_value(display)[:120],
         subject=decode_header_value(message.get("Subject"))[:200],
@@ -307,19 +316,19 @@ def correspondence_dir(repo: Path | None = None) -> Path:
 
 
 def _yaml_escape(value: str) -> str:
-    return value.replace("\\", "\\\\").replace('"', '\\"')
+    return _single_line(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
 def render_message_file(msg: InboundMessage, direction: str = "in") -> str:
     """Render a message as markdown with a metadata header.
 
-    `scope` is written by the harness at intake and is the only input to reply
-    scope selection later. It is never taken from anything the model supplies.
+    Header values stay on one line even when a caller bypasses parse_message.
+    Reply routing is checked against the sender again at send time.
     """
     references = ", ".join(f'"{_yaml_escape(r)}"' for r in msg.thread_references)
     attachments = ", ".join(
         f'{{filename: "{_yaml_escape(a["filename"])}", '
-        f'content_type: "{a["content_type"]}", bytes: {a["bytes"]}}}'
+        f'content_type: "{_single_line(a["content_type"])}", bytes: {_single_line(a["bytes"])}}}'
         for a in msg.attachments
     )
     return (
@@ -328,13 +337,13 @@ def render_message_file(msg: InboundMessage, direction: str = "in") -> str:
         f'from_address: "{_yaml_escape(msg.from_address)}"\n'
         f'from_display: "{_yaml_escape(msg.from_display)}"\n'
         f'subject: "{_yaml_escape(msg.subject)}"\n'
-        f"timestamp: {msg.timestamp}\n"
-        f"direction: {direction}\n"
-        f"scope: {msg.scope}\n"
-        f"identity: {msg.identity}\n"
-        f"counterpart: {msg.counterpart}\n"
-        f"is_autoreply: {str(msg.is_autoreply).lower()}\n"
-        f"truncated: {str(msg.truncated).lower()}\n"
+        f"timestamp: {_single_line(msg.timestamp)}\n"
+        f"direction: {_single_line(direction)}\n"
+        f"scope: {_single_line(msg.scope)}\n"
+        f"identity: {_single_line(msg.identity)}\n"
+        f"counterpart: {_single_line(msg.counterpart)}\n"
+        f"is_autoreply: {_single_line(str(msg.is_autoreply).lower())}\n"
+        f"truncated: {_single_line(str(msg.truncated).lower())}\n"
         f"thread_references: [{references}]\n"
         f"attachments: [{attachments}]\n"
         "---\n\n"
@@ -525,6 +534,13 @@ def record_reply(message: dict, repo: Path | None = None) -> None:
 _FRONT_MATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 
 
+_FILED_FIELDS = frozenset({
+    "message_id", "from_address", "from_display", "subject", "timestamp",
+    "direction", "scope", "identity", "counterpart", "is_autoreply", "truncated",
+    "thread_references", "attachments",
+})
+
+
 def parse_filed_message(text: str) -> dict:
     """Read back the metadata header written by render_message_file."""
     match = _FRONT_MATTER.match(text)
@@ -535,6 +551,9 @@ def parse_filed_message(text: str) -> dict:
         if ":" not in line:
             continue
         field, _, value = line.partition(":")
+        field = field.strip()
+        if field not in _FILED_FIELDS or field in meta:
+            return {}
         value = value.strip()
         if value.startswith('"') and value.endswith('"') and len(value) > 1:
             value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
@@ -545,7 +564,7 @@ def parse_filed_message(text: str) -> dict:
             ] if inner else []
         elif value in ("true", "false"):
             value = value == "true"
-        meta[field.strip()] = value
+        meta[field] = value
     body = text[match.end():]
     meta["body"] = body
     return meta

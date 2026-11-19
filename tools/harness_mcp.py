@@ -252,6 +252,58 @@ def _session_kind() -> str:
     return "sealed" if (REPO / SEALED_MARKER).exists() else "wake"
 
 
+class _LinkedFileAnswer(str):
+    """Plain tool text carrying metadata to the existing read meter."""
+
+
+def _linked_file_answer(path: Path, answer: str, logical: str) -> str:
+    """The file's text with its linked list beneath. The list is an extra:
+    if it can't be built, the reader answers with the file as before."""
+    try:
+        return _build_linked_file_answer(path, answer, logical)
+    except Exception as error:
+        print(f"Linked list could not be built ({type(error).__name__})", file=sys.stderr)
+        return answer
+
+
+def _build_linked_file_answer(path: Path, answer: str, logical: str) -> str:
+    config_path = REPO / "config" / "cards.json"
+    if not config_path.exists():
+        return answer  # no card settings, no list: the reader answers as before
+    config = cards_module._config(config_path)
+    if int(config.get("recall_linked_listed", 0)) <= 0:
+        return answer
+    # Read only: a newly written file need not have been cut yet.
+    state = {c["id"]: c for _, c in cards_module._jsonl_cards(REPO / names.memory("cards", "cards.jsonl"))}
+    relative = path.relative_to(REPO).as_posix()
+    returned = [c for c in state.values() if c.get("status") == "live"
+                and (c.get("origin") or {}).get("file") == relative]
+    own_tags = {tag for c in returned for tag in (c.get("origin") or {}).get("file_tags", [])}
+    if logical == "threads":
+        own_tags.update(cards_module.extract_tags(
+            kind="thread", text=threads_module.title_of(answer),
+            patterns=cards_module.load_patterns(_cards_patterns()),
+            name_index=REPO / names.rel("residents") / "index.md"))
+    omissions = {}
+    linked = cards_module.linked_labels(returned, state.values(), {}, config,
+                                        query_tags=own_tags, omissions=omissions)
+    lines = ["", "Linked cards:"]
+    for group, labels in linked.items():
+        lines.append(group + ":")
+        lines.extend(f"- {c['id']} | {c['title']} | {c['kind']} | {c['bytes']} bytes | {c['tag']}"
+                     for c in labels)
+    suffix = "\n".join(lines) if linked else "\nLinked cards: empty."
+    offered = [c["id"] for labels in linked.values() for c in labels]
+    if len((answer + suffix).encode("utf-8")) > int(config.get("recall_answer_bytes", 24000)):
+        omissions["answer_trim"] = len(offered)
+        offered = []
+        suffix = ""
+    result = _LinkedFileAnswer(answer + suffix)
+    result.read_ids = [c["id"] for c in returned]
+    result.read_extra = {"offered": offered, "omitted": omissions}
+    return result
+
+
 def _meter_memory_read(fn):
     """Record one returned answer, preserving the tool's result and private phase."""
     signature = inspect.signature(fn)
@@ -266,6 +318,8 @@ def _meter_memory_read(fn):
                     REPO / names.dir_name("memory"), fn.__name__, result, wake=_current_wake_label(),
                     conversation=normalize_conversation_id(bound.arguments.get("conversation_id")),
                     session=_session_kind(), refused=refused,
+                    ids=getattr(result, "read_ids", None),
+                    extra=getattr(result, "read_extra", None),
                 )
         except Exception:
             # A failed meter cannot fail a successful read.
@@ -665,8 +719,9 @@ def reply_to_message(
     if stored is None:
         return f"REFUSED — no stored message with id '{message_id}'."
 
-    scope = str(stored.get("scope") or mail_module.SCOPE_PUBLIC)
-    counterpart = str(stored.get("counterpart") or mail_module.MAILBAG)
+    counterpart, scope = mail_module.classify_sender(str(stored.get("from_address") or ""))
+    if stored.get("counterpart") != counterpart or stored.get("scope") != scope:
+        return "REFUSED — this message's filing record does not match its sender."
     # Keyed on COUNTERPART, not scope. The window exists so a stranger cannot
     # receive a reply composed with private context loaded. An unsigned peer
     # carries public scope, but refusing peers here made peer replies
@@ -716,7 +771,7 @@ def reply_to_message(
         subject=subject, timestamp=_utc_now().strftime("%Y-%m-%dT%H:%M:%SZ"),
         thread_references=list(stored.get("thread_references") or []),
         body=text, scope=scope,
-        counterpart=str(stored.get("counterpart") or mail_module.MAILBAG),
+        counterpart=counterpart,
     )
     mail_module.file_message(outgoing, repo=REPO, direction="out")
     return f"sent{' (truncated to scope limit)' if truncated else ''}"
@@ -2794,7 +2849,7 @@ def read_resident(handle: str | None = None, conversation_id: HostConversationId
     if not dossier_file.is_relative_to(residents_dir.resolve()):
         return "REFUSED — invalid resident handle."
     if dossier_file.exists():
-        return dossier_file.read_text(encoding="utf-8")
+        return _linked_file_answer(dossier_file, dossier_file.read_text(encoding="utf-8"), "residents")
     return f"(no resident dossier found for '{clean_handle}')"
 
 
@@ -3184,7 +3239,8 @@ def read_threads(start: int | float | str | bool | None = 1, conversation_id: Ho
 def read_thread(title: str, closed_in: str = "", conversation_id: HostConversationId = None) -> str:
     with _file_lock("threads"):
         try:
-            return threads_module.read_thread(REPO, title, closed_in)
+            path, answer = threads_module.read_thread_file(REPO, title, closed_in)
+            return _linked_file_answer(path, answer, "threads")
         except threads_module.ThreadError as error:
             return threads_module.refusal("read_thread", str(error), error.call)
 

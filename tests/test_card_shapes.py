@@ -355,3 +355,35 @@ def test_wake_fallback_ignores_removed_logs(tmp_path):
     doing = bodies(c.read_wake_card(source, source / 'naming.json', config_path=ROOT / 'config/cards.json'))['What I was doing']
     live = max((card for card in migrated if card['kind'] == 'log' and card['id'] != newest['id']), key=c._log_number)
     assert live['text'] in doing and newest['text'] not in doing
+
+
+def test_an_index_file_is_never_cut_into_a_card(memory):
+    # The harness re-cut the resident index after every dossier write, and
+    # each time the whole index went into the store as a new version.
+    source, _ = memory
+    index = source / 'memory/residents/index.md'
+    before = (source / 'memory/cards/cards.jsonl').read_bytes()
+    assert recut(source, 'residents', index) == {'changed': [], 'new': [], 'removed': [], 'unchanged': []}
+    assert (source / 'memory/cards/cards.jsonl').read_bytes() == before
+
+
+def test_a_failed_index_rewrite_does_not_stop_the_cut(memory, monkeypatch):
+    # Another program holding index.json made the rewrite fail part-way
+    # through a file, and the rest of that file was never cut.
+    source, _ = memory
+    path = source / FILES['residents']
+    path.write_text(path.read_text(encoding='utf-8') + '\n## Later\nA made-up addition.\n', encoding='utf-8')
+    def fail(self):
+        raise OSError(22, 'Invalid argument')
+    monkeypatch.setattr(c.CardStore, 'rebuild_index', fail)
+    result = recut(source, 'residents', path)
+    assert result['new']
+    _, entries = filed(source, 'residents')
+    assert ''.join(card['text'] for card in entries) == c._read_source_text(path)
+
+
+@pytest.mark.parametrize('scheme', ['naming.json', 'naming/bureau.json', 'naming/classic.json'])
+def test_every_scheme_names_its_resident_index(scheme):
+    # The index guard needs it; no scheme file lists indexes of its own.
+    naming = c.load_naming(ROOT / scheme)
+    assert naming['indexes']['residents'] == naming['paths']['residents'] + '/index.md'

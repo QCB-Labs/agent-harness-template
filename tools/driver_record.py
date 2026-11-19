@@ -71,7 +71,7 @@ def _open(path: Path) -> sqlite3.Connection:
 
 @contextmanager
 def _snapshot(path: Path):
-    with tempfile.TemporaryDirectory(prefix="sputnik-driver-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="agent-driver-") as temporary:
         copied = Path(temporary) / path.name
         shutil.copy2(path, copied)
         for suffix in ("-wal", "-shm"):

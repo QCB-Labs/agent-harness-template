@@ -480,3 +480,18 @@ def test_every_metered_reader_gets_the_host_id() -> None:
     for name in session_context_hook._METERED:
         function = inspect.unwrap(getattr(harness_mcp, name))
         assert "conversation_id" in inspect.signature(function).parameters, name
+
+
+def test_every_tool_that_takes_the_host_id_is_given_it() -> None:
+    # write_journal takes the ID for its "closed" line in the read log,
+    # but the hook never supplied it: 153 closed lines had no conversation
+    # (found 16 Nov). Any tool that asks for the ID must be on a hook list.
+    import inspect
+    from tools import harness_mcp
+    bound = {name.split(".", 1)[1] for name in
+             session_context_hook.METERED_TOOLS | session_context_hook.TARGET_TOOLS
+             if name.startswith("harness.")}
+    asking = {tool.name for tool in harness_mcp.mcp._tool_manager.list_tools()
+              if "conversation_id" in inspect.signature(inspect.unwrap(tool.fn)).parameters}
+    assert names.tool("write_journal") in asking
+    assert asking - bound == set()

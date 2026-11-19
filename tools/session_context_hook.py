@@ -63,6 +63,9 @@ _METERED = (
     "read_works_index",
     "recall",
     "recover_unrecorded",
+    # Not a reader: its "closed" line in the read log names the conversation
+    # that was the wake, which is how stage C tells a wake's reads apart.
+    "write_journal",
 )
 METERED_TOOLS = frozenset(f"harness.{names.tool(function)}" for function in _METERED)
 

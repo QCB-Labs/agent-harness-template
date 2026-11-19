@@ -1,0 +1,489 @@
+[
+  {
+    "searched": {
+      "tags": [
+        "resident:12"
+      ],
+      "text": null,
+      "kinds": null,
+      "limit": 1,
+      "history": false
+    },
+    "matched": 3,
+    "left_out": 2,
+    "left_out_counts": {
+      "total": 2,
+      "by_kind": {
+        "thread": 2
+      },
+      "by_role": {
+        "current": 2
+      }
+    },
+    "bytes": 14,
+    "budget": 16000,
+    "refused": false,
+    "cards": [
+      {
+        "id": "seed",
+        "tags": [
+          "resident:12",
+          "place:1",
+          "thing:2",
+          "note:3"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "seed",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      }
+    ],
+    "left_out_cards": [
+      {
+        "id": "missing",
+        "kind": "thread",
+        "title": "missing",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "query-only",
+        "kind": "thread",
+        "title": "query-only",
+        "bytes": 14,
+        "role": "current"
+      }
+    ],
+    "message": "2 matching card(s) left out (14 bytes asked, 16000 bytes allowed): missing (thread, current, 14 bytes): missing; query-only (thread, current, 14 bytes): query-only. Read one with read_card(card_id=\"<id>\")."
+  },
+  {
+    "searched": {
+      "tags": [],
+      "text": null,
+      "kinds": null,
+      "limit": 10,
+      "history": false
+    },
+    "matched": 21,
+    "left_out": 11,
+    "left_out_counts": {
+      "total": 11,
+      "by_kind": {
+        "thread": 6,
+        "reflection": 5
+      },
+      "by_role": {
+        "current": 11
+      }
+    },
+    "bytes": 140,
+    "budget": 16000,
+    "refused": false,
+    "cards": [
+      {
+        "id": "seed",
+        "tags": [
+          "resident:12",
+          "place:1",
+          "thing:2",
+          "note:3"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "seed",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "missing",
+        "tags": [
+          "resident:12",
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "missing",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "bridge",
+        "tags": [
+          "thing:2",
+          "place:9"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "bridge",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "hub",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "hub",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "second-hop",
+        "tags": [
+          "place:9"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "second-hop",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "query-only",
+        "tags": [
+          "resident:12"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "query-only",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-0",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-0",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-1",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-1",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-2",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-2",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-3",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-3",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      }
+    ],
+    "left_out_cards": [
+      {
+        "id": "filler-4",
+        "kind": "thread",
+        "title": "filler-4",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-5",
+        "kind": "thread",
+        "title": "filler-5",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-6",
+        "kind": "thread",
+        "title": "filler-6",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-7",
+        "kind": "thread",
+        "title": "filler-7",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-8",
+        "kind": "thread",
+        "title": "filler-8",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-9",
+        "kind": "thread",
+        "title": "filler-9",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "note-0",
+        "kind": "reflection",
+        "title": "note-0",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "note-1",
+        "kind": "reflection",
+        "title": "note-1",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "note-2",
+        "kind": "reflection",
+        "title": "note-2",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "note-3",
+        "kind": "reflection",
+        "title": "note-3",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "note-4",
+        "kind": "reflection",
+        "title": "note-4",
+        "bytes": 14,
+        "role": "current"
+      }
+    ],
+    "message": "11 matching card(s) left out (140 bytes asked, 16000 bytes allowed): filler-4 (thread, current, 14 bytes): filler-4; filler-5 (thread, current, 14 bytes): filler-5; filler-6 (thread, current, 14 bytes): filler-6; filler-7 (thread, current, 14 bytes): filler-7; filler-8 (thread, current, 14 bytes): filler-8; and 6 more. Read one with read_card(card_id=\"<id>\")."
+  },
+  {
+    "searched": {
+      "tags": [
+        "absent"
+      ],
+      "text": null,
+      "kinds": null,
+      "limit": 10,
+      "history": false
+    },
+    "matched": 0,
+    "left_out": 0,
+    "left_out_counts": {
+      "total": 0,
+      "by_kind": {},
+      "by_role": {}
+    },
+    "bytes": 0,
+    "budget": 16000,
+    "refused": false,
+    "cards": []
+  },
+  {
+    "searched": {
+      "tags": [
+        "place:1"
+      ],
+      "text": null,
+      "kinds": null,
+      "limit": 10,
+      "history": true
+    },
+    "matched": 13,
+    "left_out": 3,
+    "left_out_counts": {
+      "total": 3,
+      "by_kind": {
+        "thread": 3
+      },
+      "by_role": {
+        "current": 3
+      }
+    },
+    "bytes": 140,
+    "budget": 16000,
+    "refused": false,
+    "cards": [
+      {
+        "id": "seed",
+        "tags": [
+          "resident:12",
+          "place:1",
+          "thing:2",
+          "note:3"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "seed",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "missing",
+        "tags": [
+          "resident:12",
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "missing",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "hub",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "hub",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-0",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-0",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-1",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-1",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-2",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-2",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-3",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-3",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-4",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-4",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-5",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-5",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      },
+      {
+        "id": "filler-6",
+        "tags": [
+          "place:1"
+        ],
+        "kind": "thread",
+        "text": "Remember Mira.",
+        "title": "filler-6",
+        "status": "live",
+        "weight": 1,
+        "updated_at": "2026-10-21"
+      }
+    ],
+    "left_out_cards": [
+      {
+        "id": "filler-7",
+        "kind": "thread",
+        "title": "filler-7",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-8",
+        "kind": "thread",
+        "title": "filler-8",
+        "bytes": 14,
+        "role": "current"
+      },
+      {
+        "id": "filler-9",
+        "kind": "thread",
+        "title": "filler-9",
+        "bytes": 14,
+        "role": "current"
+      }
+    ],
+    "message": "3 matching card(s) left out (140 bytes asked, 16000 bytes allowed): filler-7 (thread, current, 14 bytes): filler-7; filler-8 (thread, current, 14 bytes): filler-8; filler-9 (thread, current, 14 bytes): filler-9. Read one with read_card(card_id=\"<id>\")."
+  }
+]

@@ -5,6 +5,7 @@ from __future__ import annotations
 from tools import names
 
 import json
+import math
 import re
 import unicodedata
 from collections import defaultdict
@@ -202,8 +203,18 @@ class CardStore:
         line = json.dumps(card, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
         with self.cards_path.open("a", encoding="utf-8", newline="") as handle:
             handle.write(line)
-        self.rebuild_index()
+        self._refresh_index()
         return card
+
+    def _refresh_index(self) -> None:
+        """The index is disposable and nothing reads it to answer. If it
+        can't be rewritten (another program holding the file), the card
+        already written stands and the rest of the cut goes on; the next
+        write rebuilds it whole."""
+        try:
+            self.rebuild_index()
+        except OSError:
+            pass
 
     def _current_state(self) -> dict[str, dict[str, Any]]:
         state: dict[str, dict[str, Any]] = {}
@@ -233,7 +244,7 @@ class CardStore:
         line = json.dumps(updated, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n"
         with self.cards_path.open("a", encoding="utf-8", newline="") as handle:
             handle.write(line)
-        self.rebuild_index()
+        self._refresh_index()
         return updated
 
     def rebuild_index(self) -> dict[str, Any]:
@@ -264,7 +275,11 @@ def load_naming(path: Path) -> dict[str, Any]:
         for key, value in data.get("paths", {}).items()
         if key in LOGICAL_NAMES
     }
-    return {"paths": paths, "indexes": data.get("indexes", {})}
+    indexes = {key: value.format(**dirs) for key, value in data.get("indexes", {}).items()}
+    # A naming file that names no resident index still has one: the folder's index.md.
+    if "residents" not in indexes and paths.get("residents") and not paths["residents"].endswith(".md"):
+        indexes["residents"] = paths["residents"] + "/index.md"
+    return {"paths": paths, "indexes": indexes}
 
 
 def _segments(text: str, marker: re.Pattern[str], logical: str, path: Path) -> list[tuple[int, str]]:
@@ -807,8 +822,79 @@ def _recall_answer_size(answer: dict[str, Any]) -> int:
     return len(to_json(answer, fallback=str, indent=2))
 
 
+def linked_labels(returned: list[dict[str, Any]], store: Iterable[dict[str, Any]],
+                  weights: dict[str, float], settings: dict[str, Any], *,
+                  query_tags: Iterable[str] = (), excluded_ids: Iterable[str] = (),
+                  omissions: dict[str, int] | None = None) -> dict[str, list[dict[str, Any]]]:
+    """One hop over configured entity tags; no writes or reinforcement.
+
+    Group order is fixed for stage C. Note-like cards with configured place
+    or thing tags use those groups, retaining their stored kind.
+    Each group gets three slots, within the overall cap (normally twelve).
+    """
+    if omissions is not None:
+        omissions.update(kind_cap=0, total_cap=0, answer_trim=0)
+    limit = max(0, int(settings.get("recall_linked_listed", 0)))
+    if not limit:
+        return {}
+    prefixes = tuple(settings.get("link_tag_prefixes", ()))
+    tags = {tag for c in returned for tag in c.get("tags", [])
+            if tag.startswith(prefixes)} - set(query_tags)
+    excluded = set(excluded_ids) | {c["id"] for c in returned}
+    live = [c for c in store if c.get("status") == "live"]
+    counts: dict[str, int] = defaultdict(int)
+    for c in live:
+        for tag in set(c.get("tags", [])) & tags:
+            counts[tag] += 1
+    note_prefixes = tuple(settings.get("link_note_tag_prefixes", ()))
+    entity_groups = settings.get("link_entity_group_prefixes", {})
+    ranked = []
+    for c in live:
+        shared = tags & set(c.get("tags", []))
+        if c["id"] in excluded or not shared:
+            continue
+        strength = sum(1 / math.log2(1 + counts[t]) for t in sorted(shared))
+        tag = min(shared, key=lambda t: (counts[t], t))
+        ranked.append((c, strength, tag, any(t.startswith(note_prefixes) for t in shared)))
+    # Stable sorts preserve strength and weight ahead of recency and ID ties.
+    ranked.sort(key=lambda item: item[0]["id"])
+    ranked.sort(key=lambda item: _card_date(item[0]), reverse=True)
+    ranked.sort(key=lambda item: (item[1], float(weights.get(item[0]["id"], item[0].get("weight", 1)))), reverse=True)
+    groups = {name: [] for name in ("threads", "places", "things", "notes", "wakes")}
+    kind_group = {"thread": "threads", "log": "wakes",
+                  "rule": "notes", "reflection": "notes", "decision": "notes"}
+    for c, _, tag, is_note in ranked:
+        name = kind_group.get(c["kind"], c["kind"])
+        if name == "notes":
+            for entity_group in ("places", "things"):
+                if any(t.startswith(tuple(entity_groups.get(entity_group, ()))) for t in c.get("tags", [])):
+                    name = entity_group
+                    break
+        groups.setdefault(name, []).append((c, tag, is_note))
+    result = {}
+    note_links = 0
+    fixed = ("threads", "places", "things", "notes", "wakes")
+    for name in (*fixed, *sorted(set(groups) - set(fixed))):
+        kept = 0
+        for c, tag, is_note in groups[name]:
+            # Apply kind and note-tag caps before the overall label cap.
+            if kept >= 3 or (is_note and note_links >= 3):
+                if omissions is not None:
+                    omissions["kind_cap"] += 1
+                continue
+            kept += 1
+            note_links += is_note
+            if not limit:
+                if omissions is not None:
+                    omissions["total_cap"] += 1
+                continue
+            result.setdefault(name, []).append(dict(_recall_reference(c), kind=c["kind"], tag=tag))
+            limit -= 1
+    return result
+
+
 def _limit_recall_answer(answer: dict[str, Any], budget: int) -> None:
-    for field in ("same_file", "people", "left_out_cards"):
+    for field in ("linked", "same_file", "people", "left_out_cards"):
         if _recall_answer_size(answer) <= budget:
             return
         answer.pop(field, None)
@@ -937,11 +1023,25 @@ def recall(
             + (f"; and {more} more" if more > 0 else "")
             + '. Read one with read_card(card_id="<id>").'
         )
+    omissions: dict[str, int] = {}
+    try:
+        linked = linked_labels(returned, state.values(), {}, config, query_tags=wanted,
+                               excluded_ids={entry["id"] for entry in listed}, omissions=omissions)
+    except Exception:
+        # The list is an extra: a fault in it never costs him the cards.
+        linked, omissions = {}, {"kind_cap": 0, "total_cap": 0, "answer_trim": 0, "failed": 1}
+    if linked:
+        result["linked"] = linked
     _limit_recall_answer(result, int(config.get("recall_answer_bytes", 24000)))
+    omissions["answer_trim"] = sum(map(len, linked.values())) - sum(map(len, result.get("linked", {}).values()))
     if record_read:
+        extra = None
+        if int(config.get("recall_linked_listed", 0)) > 0:
+            extra = {"offered": [c["id"] for group in result.get("linked", {}).values() for c in group],
+                     "omitted": omissions}
         record_read_result(memory, "recall", result, wake=wake, conversation=conversation,
                            session=session, ids=[card["id"] for card in returned],
-                           refused=refused, query=result["searched"])
+                           refused=refused, query=result["searched"], extra=extra)
     return result
 
 
@@ -954,6 +1054,10 @@ def recut_file(repo_root: Path, naming_path: Path, patterns_path: Path, logical:
     store = CardStore(memory, patterns_path, name_index=(root / resident_index_rel if resident_index_rel else None))
     state = store._current_state()
     relative = path.relative_to(root).as_posix()
+    if relative == naming["indexes"].get(logical):
+        # An index lists the files; it is not one of them. Cut as a card it
+        # carried every name in it and grew by its whole length at each write.
+        return {"changed": [], "new": [], "removed": [], "unchanged": []}
     existing = sorted(
         [
             card for card in state.values()
@@ -1494,6 +1598,7 @@ def record_read_result(
     memory: Path, tool: str, result: Any, *, wake: str,
     conversation: str | None = None, session: str = "wake",
     ids: list[str] | None = None, refused: bool = False, query: Any = None,
+    extra: dict[str, Any] | None = None,
 ) -> None:
     """Meter the exact FastMCP text answer without making reads depend on logging."""
     try:
@@ -1502,6 +1607,8 @@ def record_read_result(
                  "ids": ids or [], "refused": refused, "conversation": conversation, "session": session}
         if query is not None:
             event["query"] = query
+        if extra:
+            event.update(extra)
         _append_read(memory, event)
     except Exception:
         # Research telemetry must never change or prevent the memory answer.
