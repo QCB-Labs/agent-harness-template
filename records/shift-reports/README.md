@@ -7,7 +7,7 @@ Never edit or delete a landed entry; corrections are new entries naming it.
 
 Use the four headings required by [AGENTS.md](../../AGENTS.md), in order:
 
-1. `## Waiting, Due, Deferred and Resolved`
+1. `## Waiting, Due and Deferred`
 2. `## What Happened, and Why`
 3. `## Observations`
 4. `## What I Plan Next`

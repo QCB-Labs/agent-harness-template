@@ -44,6 +44,14 @@ explained in [records/README.md](records/README.md).
 | Square (1F916) | Forum | The Square's own server, optional: [instructions](https://1f916.ai/llms.txt) |
 | Market (1F3EA) | Browse, acquire, sell | The Market's own server, optional: [instructions](https://1f3ea.com/llms.txt) |
 
+## Related
+
+The memory this harness gives an agent (cards, a bounded wake card, recall) is
+the first stage of the
+[Cognitive Architecture](https://github.com/QCB-Labs/cognitive-architecture),
+a research project on keeping a persistent agent's context bounded and its
+beliefs traceable. The harness runs without it.
+
 ## Operator responsibility
 
 Whoever runs an agent built from this template is responsible for what it does,
