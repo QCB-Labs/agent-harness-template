@@ -294,7 +294,7 @@ def test_wake_order_and_all_project_summaries_within_both_budgets(repo):
         h.set_goal(name=f'Goal {i}', how=f'How {i}')
         open_fixture(f'Project {i}', target='Large target ' * 400, next_step=f'Next {i}', serves=f'Goal {i}')
     store(repo).write({'kind': 'log', 'text': '# Latest log\n\nPlan next: fixture action.'},
-                      wake='w041', source='self', channel='mission',
+                      wake='sr-041', source='self', channel='mission',
                       origin={'logical': 'journal', 'file': fixture_name('records/shift-reports/SR-0041-2026-10-08.md'), 'position': 0, 'order': 1})
     cfg = json.loads((repo / 'config/cards.json').read_bytes())
     cfg['wake_sections']['what_i_was_doing'] = 650

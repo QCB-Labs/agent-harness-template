@@ -19,7 +19,7 @@ def test_wake_card_logs_every_card_in_the_log_bundle(tmp_path):
     store = [json.loads(x) for x in (tmp_path / "memory/cards/cards.jsonl").read_text(encoding="utf-8").splitlines()]
     shown = [x["id"] for x in store if x["origin"]["key"] in {"header", "waiting,-due,-deferred-and-done",
                                                                  "observations", "what-i-plan-next"}]
-    c.read_wake_card(tmp_path, naming, config_path=cfg, record_read=True, wake="W90001")
+    c.read_wake_card(tmp_path, naming, config_path=cfg, record_read=True, wake="SR-90001")
     logged = reads(tmp_path / "memory")[-1]["ids"]
     assert set(shown) <= set(logged)
     assert not {x["id"] for x in store if x["origin"]["key"] == "what-happened,-and-why"} & set(logged)

@@ -34,7 +34,7 @@ def _store(tmp_path: Path) -> CardStore:
 def _write(store: CardStore, text: str = "Keep the raw line.") -> dict:
     return store.write(
         {"kind": "rule", "text": text},
-        wake="w123",
+        wake="sr-123",
         source="self",
         channel="session",
     )
@@ -46,12 +46,12 @@ def test_system_fields_are_refused(tmp_path: Path) -> None:
     forbidden = "source"
     payload[forbidden] = "caller value"
     with pytest.raises(CardError, match="system field"):
-        store.write(payload, wake="w123", source="self", channel="session")
+        store.write(payload, wake="sr-123", source="self", channel="session")
 
 
 def test_deleted_index_rebuilds_identically(tmp_path: Path) -> None:
     store = _store(tmp_path)
-    _write(store, "W123 checked on 2026-09-30.")
+    _write(store, "SR-123 checked on 2026-09-30.")
     expected = json.loads(store.index_path.read_text(encoding="utf-8"))
     store.index_path.unlink()
     rebuilt = store.rebuild_index()
@@ -73,7 +73,7 @@ def test_made_up_city_tags() -> None:
         kind="thread",
         title="Mira (#12)",
         text=(
-            "On W123, resident #12 crossed Places 44 & 45 on 2026-09-30; "
+            "On SR-123, resident #12 crossed Places 44 & 45 on 2026-09-30; "
             "Note #88 cited Thing #91, Post #7, Kind #39, and stray #999."
         ),
         patterns=patterns,
@@ -89,13 +89,13 @@ def test_made_up_city_tags() -> None:
         "ref:999",
         "resident:12",
         "thing:91",
-        "wake:w123",
+        "wake:sr-123",
     ]
 
 
 def test_tag_extraction_is_deterministic() -> None:
     patterns = load_patterns(CITY)
-    kwargs = {"kind": "decision", "text": "Place 44 at W123", "patterns": patterns}
+    kwargs = {"kind": "decision", "text": "Place 44 at SR-123", "patterns": patterns}
     first = extract_tags(**kwargs)
     assert extract_tags(**kwargs) == first
 
@@ -213,7 +213,7 @@ def test_recall_refuses_over_budget_and_logs_read(tmp_path: Path) -> None:
     _write(store, "x" * 80)
     config = tmp_path / "budget.json"
     config.write_text(json.dumps({"recall_bytes": 4, "wake_sections": {}}), encoding="utf-8")
-    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="sr-123")
     assert result["refused"] is True
     assert result["matched"] == 1
     assert (tmp_path / "private" / "card-reads.jsonl").is_file()
@@ -225,7 +225,7 @@ def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path)
     second = _write(store, "b" * 80)
     config = tmp_path / "budget.json"
     config.write_text(json.dumps({"recall_bytes": 100, "wake_sections": {}}), encoding="utf-8")
-    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="sr-123")
     assert result["refused"] is False
     assert len(result["cards"]) == 1
     assert result["cards"][0]["text"] in {"a" * 80, "b" * 80}
@@ -240,11 +240,11 @@ def test_recall_over_budget_returns_what_fits_and_names_the_rest(tmp_path: Path)
 def test_recall_does_not_change_cards_and_ranks_tags_weight_newest(tmp_path: Path) -> None:
     times = iter(("2026-09-30T10:00:00Z", "2026-09-30T11:00:00Z", "2026-09-30T12:00:00Z"))
     store = CardStore(tmp_path, GENERIC, clock=lambda: next(times))
-    a = store.write({"kind": "rule", "text": "W123 alpha"}, wake="w1", source="self", channel="session")
-    b = store.write({"kind": "rule", "text": "W123 W124 beta"}, wake="w1", source="self", channel="session")
-    c = store.write({"kind": "rule", "text": "W123 gamma"}, wake="w1", source="self", channel="session")
+    a = store.write({"kind": "rule", "text": "SR-123 alpha"}, wake="w1", source="self", channel="session")
+    b = store.write({"kind": "rule", "text": "SR-123 SR-124 beta"}, wake="w1", source="self", channel="session")
+    c = store.write({"kind": "rule", "text": "SR-123 gamma"}, wake="w1", source="self", channel="session")
     raw = store.cards_path.read_bytes()
-    result = recall(tmp_path, tags=["wake:w123", "wake:w124"], config_path=ROOT / "config" / "cards.json")
+    result = recall(tmp_path, tags=["wake:sr-123", "wake:sr-124"], config_path=ROOT / "config" / "cards.json")
     ids = [card["id"] for card in result["cards"]]
     assert ids == [b["id"], c["id"], a["id"]]
     assert store.cards_path.read_bytes() == raw
@@ -291,7 +291,7 @@ def test_recall_says_what_each_left_out_card_is(tmp_path: Path) -> None:
     untitled = _write(store, "# Made-up log, wake nine\n\n" + "body " * 60)
     config = tmp_path / "budget.json"
     config.write_text(json.dumps({"recall_bytes": 100, "wake_sections": {}}), encoding="utf-8")
-    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="sr-123")
     entry = result["left_out_cards"][0]
     assert entry["id"] == untitled["id"]
     assert entry["title"] == "Made-up log, wake nine"
@@ -306,7 +306,7 @@ def test_recall_names_five_left_out_cards_and_counts_the_rest(tmp_path: Path) ->
         _write(store, f"# Made-up entry {n}\n\n" + "body " * 60)
     config = tmp_path / "budget.json"
     config.write_text(json.dumps({"recall_bytes": 400, "wake_sections": {}}), encoding="utf-8")
-    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="w123")
+    result = recall(tmp_path, tags=["kind:rule"], config_path=config, wake="sr-123")
     assert result["left_out"] == 6 and len(result["left_out_cards"]) == 6
     assert result["message"].count("bytes):") == 5
     assert "and 1 more" in result["message"]

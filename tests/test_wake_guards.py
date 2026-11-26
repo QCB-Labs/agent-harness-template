@@ -120,3 +120,14 @@ def test_a_malformed_receipt_does_not_block_a_private_read(tmp_path, monkeypatch
     phase._record_private_use(B)
     assert phase.unknown_email_status(B)["available"] is False
 
+
+
+def test_journal_under_configured_prefix_gets_wake_tag(tmp_path):
+    import re
+    from tools import cards
+    wake = names.wake_id(135)
+    path = tmp_path / f"{wake}-2080-01-01.md"
+    assert cards._wake_from_path(path) == wake.lower()
+    assert cards._is_wake(wake.lower())
+    regex = cards.load_patterns(Path("config/tag-patterns.generic.json"))["patterns"][0]["regex"]
+    assert re.search(regex, f"see {wake} for the details").group(1) == wake

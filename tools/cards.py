@@ -42,7 +42,10 @@ def _utc_now() -> str:
 
 
 def load_patterns(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    # "{wake_prefix}" in a pattern stands for the configured wake id prefix.
+    text = path.read_text(encoding="utf-8")
+    prefix = json.dumps(_wake_prefix())[1:-1]
+    return json.loads(text.replace("{wake_prefix}", prefix))
 
 
 def _without_accents(text: str) -> str:
@@ -307,8 +310,17 @@ def _lesson_created_at(segment: str) -> str:
     return f"{date}T{hour or '00'}:{minute or '00'}:{second or '00'}Z"
 
 
+def _wake_prefix() -> str:
+    """The configured wake id prefix ("W", "SR-", ...), as a regex fragment."""
+    return re.escape(names.load()["wake_id"]["prefix"])
+
+
+def _is_wake(value: str) -> bool:
+    return re.fullmatch(r"(?i)" + _wake_prefix() + r"\d+", value) is not None
+
+
 def _wake_from_path(path: Path) -> str:
-    match = re.search(r"(?i)(?:^|[^a-z0-9])(w\d{3,})(?:[^a-z0-9]|$)", path.stem)
+    match = re.search(r"(?i)(?:^|[^a-z0-9])(" + _wake_prefix() + r"\d{3,})(?:[^a-z0-9]|$)", path.stem)
     if match:
         return match.group(1).lower()
     date = re.search(r"(\d{4}-\d{2}-\d{2}(?:-\d{4,6})?)", path.stem)
@@ -513,12 +525,12 @@ def _prepare_pieces(logical: str, path: Path, text: str, relative: str,
     header = text[:first_heading.start()] if first_heading else text
     if logical == "journal":
         wake = _wake_from_path(path)
-        if re.fullmatch(r"w\d+", wake):
+        if _is_wake(wake):
             file_tags.add(f"wake:{wake}")
         date = re.search(cfg["file_date"], header, re.MULTILINE | re.IGNORECASE) if cfg.get("file_date") else None
         if date:
             file_tags.add(f"date:{date.group(1)}")
-        prefix = wake.upper() if re.fullmatch(r"w\d+", wake) else wake
+        prefix = wake.upper() if _is_wake(wake) else wake
     elif logical == "residents":
         resident_id = next((m.group(1) for pattern in cfg.get("resident_id", [])
                             if (m := re.search(pattern, header, re.MULTILINE | re.IGNORECASE))), None)

@@ -10,12 +10,12 @@ is retired and excluded. Source Markdown uses CRLF.
   confirmed, proposed and retracted sections matched by city section_status.
 - memory/open-threads.md: Living threads, nested bullets, about 5,000-character entry.
 - goals.md: H2 only, Japanese/Cyrillic, about 2,200-character segment.
-- memory/mission_log/W9000.md: missing final newline; shared recall query.
-- memory/mission_log/W10000.md: prose and bullets before the first heading.
-- memory/mission_log/W20000.md: consecutive headings without body.
-- memory/mission_log/W30000.md: nested bullets.
-- memory/mission_log/W40000.md: Japanese/Cyrillic and numbered points.
-- memory/mission_log/W50000.md: about 17,000 characters; shared recall query.
+- memory/mission_log/SR-9000.md: missing final newline; shared recall query.
+- memory/mission_log/SR-10000.md: prose and bullets before the first heading.
+- memory/mission_log/SR-20000.md: consecutive headings without body.
+- memory/mission_log/SR-30000.md: nested bullets.
+- memory/mission_log/SR-40000.md: Japanese/Cyrillic and numbered points.
+- memory/mission_log/SR-50000.md: about 17,000 characters; shared recall query.
 - memory/residents/velvetspoon.md: about 4,200 characters and Japanese/Cyrillic.
 - memory/residents/paperfinch.md, chalkotter.md, ribbonmole.md, teacupfox.md:
   four additional invented dossiers with distinct handles and IDs.

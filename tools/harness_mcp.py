@@ -375,7 +375,7 @@ def recall(tags: list[str], text: str | None = None,
     """Recall live and recheck cards within the configured budget.
 
     history=True uses the whole budget for history, after current cards.
-    Example: recall(tags=["wake:w137"], history=True).
+    Example: recall(tags=["wake:sr-0137"], history=True).
     """
     with _file_lock("cards"):
         _ensure_cards()

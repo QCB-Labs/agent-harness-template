@@ -14,7 +14,7 @@ KINDS = ('lessons', 'city_rules', 'open_threads', 'goals', 'journal', 'residents
 MULTI = KINDS[:4]
 FILES = {'lessons': 'memory/lessons.md', 'city_rules': 'memory/city-rules.md',
          'open_threads': 'memory/open-threads.md', 'goals': 'goals.md',
-         'journal': 'memory/mission_log/W10000.md',
+         'journal': 'memory/mission_log/SR-10000.md',
          'residents': 'memory/residents/velvetspoon.md'}
 
 @pytest.fixture
@@ -121,7 +121,7 @@ def test_insert_then_edit_keeps_the_entry_id(memory, kind):
         insertion_path = path
     else:
         # Insert an earlier sibling file without changing existing keyed pieces.
-        insertion_path = path.parent / ('W8000.md' if kind == 'journal' else 'amberbird.md')
+        insertion_path = path.parent / ('SR-8000.md' if kind == 'journal' else 'amberbird.md')
         insertion_path.write_bytes(b'# Invented amber entry\r\n\r\nAn amber ribbon waits.\r\n')
     result = recut(source, kind, insertion_path)
     middle = state(source)
@@ -250,7 +250,7 @@ def test_wake_limit_whole_cards_and_omission_counts(memory, tmp_path, tight):
     listed = sum(f"- {card['id']}: {card['title']} [" in sections['Open threads (index)'] for card in threads)
     assert listed == info['shown'] and info['left_out'] == len(threads)-listed
 
-PLAN_LOG = ('# Invented log W60000\r\n\r\nPreamble about a kettle.\r\n\r\n'
+PLAN_LOG = ('# Invented log SR-60000\r\n\r\nPreamble about a kettle.\r\n\r\n'
             '## What happened\r\n\r\nCounted spoons.\r\n\r\n'
             '## What I learned, and what I plan next\r\n\r\nSpoons come in sets.\r\n\r\n'
             '### What I plan next\r\n\r\n- Visit the amber shelf.\r\n\r\n'
@@ -260,13 +260,13 @@ PLAN_LOG = ('# Invented log W60000\r\n\r\nPreamble about a kettle.\r\n\r\n'
 def test_wake_fallback_shows_the_newest_logs_plan(tmp_path):
     source = tmp_path / 'source'
     shutil.copytree(FIXTURE, source)
-    (source / 'memory/mission_log/W60000.md').write_bytes(PLAN_LOG.encode())
+    (source / 'memory/mission_log/SR-60000.md').write_bytes(PLAN_LOG.encode())
     migrated = c.migrate(source, source / 'naming.json', CITY, output_root=source / 'memory')
     # Re-cutting an older log moves its updated_at; it must not become "newest".
     older = next(card for card in migrated if card['origin']['file'] == FILES['journal'])
     c.CardStore(source / 'memory', CITY, clock=lambda: '2090-01-01T00:00:00Z').append_version(older)
     doing = bodies(c.read_wake_card(source, source / 'naming.json', config_path=ROOT / 'config/cards.json'))['What I was doing']
-    assert 'W60000 · What I learned, and what I plan next' in doing
+    assert 'SR-60000 · What I learned, and what I plan next' in doing
     assert 'Spoons come in sets.' in doing and '- Visit the amber shelf.' in doing
     for absent in ('Preamble about a kettle', 'Counted spoons', 'No reply to the kettle', 'An older note', older['text']):
         assert absent not in doing
@@ -290,7 +290,7 @@ def test_recall_puts_the_person_and_the_thread_before_logs(tmp_path):
                     updated_at=updated, created_at=updated, origin={'file': name, 'logical': kind, 'order': 0})
     # The big log is the most recently touched, as after an operator re-cut.
     memory_root = _recall_store(tmp_path, [
-        card('log-0001', 'log', 'memory/mission_log/W10000.md', 14000, '2090-01-03T00:00:00Z'),
+        card('log-0001', 'log', 'memory/mission_log/SR-10000.md', 14000, '2090-01-03T00:00:00Z'),
         card('relationship-0001', 'relationship', 'memory/residents/velvetspoon.md', 2300, '2080-01-01T00:00:00Z'),
         card('thread-0001', 'thread', 'memory/open-threads.md', 5000, '2080-01-02T00:00:00Z'),
         card('reflection-0001', 'reflection', 'memory/lessons.md', 600, '2080-01-01T00:00:00Z'),
@@ -304,8 +304,8 @@ def test_recall_orders_logs_by_wake_number_not_by_last_touch(tmp_path):
         return dict(id=card_id, kind='log', tags=['place:9000'], text=f'{card_id} ' + 'x' * 9000,
                     updated_at=updated, created_at=updated, origin={'file': name, 'logical': 'journal', 'order': 0})
     memory_root = _recall_store(tmp_path, [
-        log('log-0001', 'memory/mission_log/W9000.md', '2090-01-03T00:00:00Z'),
-        log('log-0002', 'memory/mission_log/W10000.md', '2080-01-01T00:00:00Z'),
+        log('log-0001', 'memory/mission_log/SR-9000.md', '2090-01-03T00:00:00Z'),
+        log('log-0002', 'memory/mission_log/SR-10000.md', '2080-01-01T00:00:00Z'),
     ])
     result = c.recall(memory_root, tags=['place:9000'], config_path=ROOT / 'config/cards.json')
     assert [card['id'] for card in result['cards']] == ['log-0002']
@@ -313,12 +313,12 @@ def test_recall_orders_logs_by_wake_number_not_by_last_touch(tmp_path):
 
 def test_recall_long_log_returns_short_match_and_describes_omission(memory):
     source, migrated = memory
-    long_log = next(card for card in migrated if card['origin']['file'].endswith('W50000.md'))
-    short_log = next(card for card in migrated if card['origin']['file'].endswith('W9000.md'))
+    long_log = next(card for card in migrated if card['origin']['file'].endswith('SR-50000.md'))
+    short_log = next(card for card in migrated if card['origin']['file'].endswith('SR-9000.md'))
     result = c.recall(source / 'memory', tags=[], text='lanternquery', kinds=['log'], config_path=ROOT / 'config/cards.json')
     assert result['cards'] == [short_log] and result['matched'] == 2 and result['left_out'] == 1
     expected = {'id':long_log['id'], 'kind':'log', 'bytes':len(long_log['text'].encode()),
-                'title':'W50000 · header', 'role':'history'}
+                'title':'SR-50000 · header', 'role':'history'}
     assert result['left_out_cards'] == [expected]
     assert f"(log, history, {expected['bytes']} bytes): {expected['title']}" in result['message']
     assert long_log['text'] not in result['message']
@@ -327,18 +327,18 @@ def test_recall_long_log_returns_short_match_and_describes_omission(memory):
 def test_city_patterns_extract_invented_tags(memory):
     source, migrated = memory
     lesson = next(card for card in migrated if 'Thing #8000' in card['text'])
-    assert {'place:9000','thing:8000','wake:w9000'} <= set(lesson['tags'])
+    assert {'place:9000','thing:8000'} <= set(lesson['tags'])
     thread = next(card for card in migrated if 'Places 9000 & 10000' in card['text'])
-    assert {'place:9000','place:10000','wake:w9000'} <= set(thread['tags'])
+    assert {'place:9000','place:10000'} <= set(thread['tags'])
     dossier = next(card for card in migrated if card['origin']['file']==FILES['residents'])
     assert {'resident:20000','name:velvetspoon'} <= set(dossier['tags'])
-    tags = c.extract_tags(kind='thread', text='Vélvetspoon #20000 moved through routing [9000, 10000] on W9000.',
+    tags = c.extract_tags(kind='thread', text='Vélvetspoon #20000 moved through routing [9000, 10000] on SR-9000.',
                           patterns=c.load_patterns(CITY), name_index=source / 'memory/residents/index.md')
-    assert tags == ['kind:thread','name:velvetspoon','place:10000','place:9000','resident:20000','wake:w9000']
+    assert tags == ['kind:thread','name:velvetspoon','place:10000','place:9000','resident:20000','wake:sr-9000']
 
 
 @pytest.mark.parametrize('filename,number', [
-    ('SR-0135-2080-01-01.md', 135), ('W135-2080-01-01.md', 135),
+    ('SR-0135-2080-01-01.md', 135), ('SR-135-2080-01-01.md', 135),
     ('LOG-0135.md', 135), ('0135-2080-01-01.md', -1), ('SR-no-number.md', -1),
 ])
 def test_log_number_accepts_letter_prefixes_and_rejects_unprefixed_dates(filename, number):

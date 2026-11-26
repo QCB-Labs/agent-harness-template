@@ -50,9 +50,9 @@ def verify_views(source, tmp_path):
 
 
 SHAPES = [
-    ("W137-2080-10-05.md", ["header", "needs-operator-attention", "what-happened-and-why", "what-i-learned-and-what-i-plan-next", "what-is-not-owed", "closing-notes"], ["history"] * 6),
-    ("W138-2080-10-06.md", ["header"], ["history"]),
-    ("W139-2080-10-07.md", ["header", "-repeated-notes", "-repeated-notes-2"], ["history"] * 3),
+    ("SR-137-2080-10-05.md", ["header", "needs-operator-attention", "what-happened-and-why", "what-i-learned-and-what-i-plan-next", "what-is-not-owed", "closing-notes"], ["history"] * 6),
+    ("SR-138-2080-10-06.md", ["header"], ["history"]),
+    ("SR-139-2080-10-07.md", ["header", "-repeated-notes", "-repeated-notes-2"], ["history"] * 3),
     ("2080-08-15-1355.md", ["header", "plan"], ["history"] * 2),
     ("paperfold.md", ["header", "entry:2080-09-14", "entry:2080-10-05", "officer-s-impression"], ["current", "history", "history", "current"]),
     ("duplicate-date.md", ["header", "entry:2080-09-14", "entry:2080-09-14-2", "officer-s-impression"], ["current", "history", "history", "current"]),
@@ -71,20 +71,20 @@ def test_shapes_keys_roles_labels_and_tags(source, filename, keys, roles):
     raw = (source / cards[0]["origin"]["file"]).read_bytes()
     assert "".join(card["text"] for card in cards).encode() == raw
     if filename.endswith(".md") and cards[0]["kind"] == "log":
-        prefix = c._wake_from_path(Path(filename)).upper() if filename.startswith("W") else Path(filename).stem
+        prefix = c._wake_from_path(Path(filename)).upper() if c._is_wake(c._wake_from_path(Path(filename))) else Path(filename).stem
         assert cards[0]["title"] == prefix + " · header"
         for card in cards:
             if filename.startswith("W"):
                 assert "wake:" + prefix.lower() in card["tags"]
-            if filename.startswith("W137"):
+            if filename.startswith("SR-137"):
                 assert "date:2080-10-05" in card["tags"]
-        if filename.startswith("W139"):
-            assert cards[1]["title"] == "W139 · Repeated Notes"
-        if filename.startswith("W137"):
+        if filename.startswith("SR-139"):
+            assert cards[1]["title"] == "SR-139 · Repeated Notes"
+        if filename.startswith("SR-137"):
             assert "place:9911" in cards[2]["tags"]
             assert all("place:9911" not in card["tags"] for card in cards if card is not cards[2])
             assert "### What I Plan Next" in cards[3]["text"]
-            assert cards[3]["title"] == "W137 · What I Learned, and What I Plan Next"
+            assert cards[3]["title"] == "SR-137 · What I Learned, and What I Plan Next"
     else:
         handle = Path(filename).stem
         prefix = "Resident · " + handle if handle == "no-number" else "Resident #961 · " + handle
@@ -107,7 +107,7 @@ def test_shapes_keys_roles_labels_and_tags(source, filename, keys, roles):
     ("journal", "# Title\n## Header\nA\n## Header-2\nB\n## Header\nC", ["header", "header-2", "header-2-2", "header-3"]),
 ])
 def test_fallback_and_unicode_keys(source, logical, text, keys):
-    prepared = c._prepare_pieces(logical, Path("W999.md"), text, "W999.md", c.load_patterns(PATTERNS))
+    prepared = c._prepare_pieces(logical, Path("SR-999.md"), text, "SR-999.md", c.load_patterns(PATTERNS))
     assert [item[3]["key"] for item in prepared] == keys
     assert "".join(item[0]["text"] for item in prepared) == text
     if logical == "residents":
@@ -258,9 +258,9 @@ def example(card_id, role="current", size=20, kind="relationship", tags=None, fi
 
 @pytest.mark.parametrize("history,expected", [(False, ["c", "h3"]), (True, ["c", "h3", "h2"])])
 def test_recall_current_first_and_history_share(tmp_path, history, expected):
-    memory, config = recall_memory(tmp_path, [example("h1", "history", 40, kind="log", file="W100.md"),
-                                            example("h2", "history", 40, kind="log", file="W200.md"),
-                                            example("h3", "history", 40, kind="log", file="W300.md"),
+    memory, config = recall_memory(tmp_path, [example("h1", "history", 40, kind="log", file="SR-100.md"),
+                                            example("h2", "history", 40, kind="log", file="SR-200.md"),
+                                            example("h3", "history", 40, kind="log", file="SR-300.md"),
                                             example("c", None, 20)])
     result = c.recall(memory, tags=["resident:961"], config_path=config, history=history)
     assert [card["id"] for card in result["cards"]] == expected
@@ -278,7 +278,7 @@ def test_history_only_and_date_ordering(tmp_path):
 
 
 def test_history_tag_count_precedes_recency(tmp_path):
-    memory, config = recall_memory(tmp_path, [example("old", "history", tags=["resident:961", "name:bird"], file="W100.md"), example("new", "history", tags=["resident:961"], file="W200.md")], history_budget=20)
+    memory, config = recall_memory(tmp_path, [example("old", "history", tags=["resident:961", "name:bird"], file="SR-100.md"), example("new", "history", tags=["resident:961"], file="SR-200.md")], history_budget=20)
     result = c.recall(memory, tags=["resident:961", "name:bird"], config_path=config)
     assert [card["id"] for card in result["cards"]] == ["old"]
 
@@ -308,8 +308,8 @@ def test_recall_empty_and_zero_budget(tmp_path):
 
 @pytest.mark.parametrize("cut", [False, True])
 def test_wake_plan_from_newest_cut_or_old_log(source, cut):
-    text = "# Invented Log W60000\r\n\r\n## What Happened\r\nCounted spoons.\r\n\r\n## What I Plan Next\r\nVisit the amber shelf.\r\n\r\n## Other\r\nOther text."
-    path = source / "memory/mission_log/W60000.md"
+    text = "# Invented Log SR-60000\r\n\r\n## What Happened\r\nCounted spoons.\r\n\r\n## What I Plan Next\r\nVisit the amber shelf.\r\n\r\n## Other\r\nOther text."
+    path = source / "memory/mission_log/SR-60000.md"
     path.write_bytes(text.encode())
     if cut:
         migrate(source)
@@ -318,15 +318,15 @@ def test_wake_plan_from_newest_cut_or_old_log(source, cut):
     result = c.read_wake_card(source, source / "naming.json", config_path=CONFIG)
     assert "Visit the amber shelf." in result["text"]
     assert "Counted spoons." not in result["text"] and "Other text." not in result["text"]
-    assert ("W60000 · What I Plan Next" if cut else "# Invented Log W60000") in result["text"]
+    assert ("SR-60000 · What I Plan Next" if cut else "# Invented Log SR-60000") in result["text"]
 
 
 def test_cut_wake_without_plan_shows_header_and_labels(source):
-    path = source / "memory/mission_log/W60000.md"
-    path.write_bytes(b"# Log W60000\r\nIntro.\r\n\r\n## First\r\nHidden first body.\r\n\r\n## Second\r\nHidden second body.")
+    path = source / "memory/mission_log/SR-60000.md"
+    path.write_bytes(b"# Log SR-60000\r\nIntro.\r\n\r\n## First\r\nHidden first body.\r\n\r\n## Second\r\nHidden second body.")
     migrate(source)
     result = c.read_wake_card(source, source / "naming.json", config_path=CONFIG)
-    assert "Intro." in result["text"] and "W60000 · First" in result["text"] and "W60000 · Second" in result["text"]
+    assert "Intro." in result["text"] and "SR-60000 · First" in result["text"] and "SR-60000 · Second" in result["text"]
     assert "Hidden first body." not in result["text"] and "Hidden second body." not in result["text"]
 
 
@@ -350,11 +350,11 @@ def test_harness_history_argument_and_description(source, monkeypatch):
     scheme_memory = source / harness.names.dir_name("memory")
     if not (scheme_memory / "cards").exists():
         shutil.copytree(source / "memory" / "cards", scheme_memory / "cards")
-    result = harness.recall(tags=["wake:w137"], history=True)
+    result = harness.recall(tags=["wake:sr-137"], history=True)
     assert result["searched"]["history"] is True and result["cards"]
     tool = next(t for t in asyncio.run(harness.mcp.list_tools()) if t.name == "recall")
     assert "history" in tool.inputSchema["properties"]
-    assert 'recall(tags=["wake:w137"], history=True)' in tool.description
+    assert 'recall(tags=["wake:sr-0137"], history=True)' in tool.description
     wake_tool = next(t for t in asyncio.run(harness.mcp.list_tools()) if t.name == "read_wake_card")
     assert wake_tool.description == "Read the seven-section wake card; content is returned once."
     assert len(c.read_wake_card(source, source / "naming.json", config_path=CONFIG)["sections"]) == 7
@@ -411,7 +411,7 @@ def test_unchanged_kinds_match_baseline_snapshot_and_keep_ids(source, line_endin
 
 def test_reordering_sections_keeps_ids_and_updates_origin(source, tmp_path):
     migrate(source)
-    before = filed(source, "W137-2080-10-05.md")
+    before = filed(source, "SR-137-2080-10-05.md")
     path = source / before[0]["origin"]["file"]
     reordered = [before[0], before[2], before[1], *before[3:]]
     path.write_bytes("".join(card["text"] for card in reordered).encode())
@@ -438,9 +438,9 @@ def test_keyed_metadata_change_versions_once_then_noop(source):
 
 
 def test_date_in_section_is_not_a_file_identity(source):
-    text = "# Log W999\n\n## Section\n**Date:** 2080-01-01\n\n## Other\nBody"
-    prepared = c._prepare_pieces("journal", Path("W999.md"), text, "W999.md", c.load_patterns(PATTERNS))
-    assert all(item[3]["file_tags"] == ["wake:w999"] for item in prepared)
+    text = "# Log SR-999\n\n## Section\n**Date:** 2080-01-01\n\n## Other\nBody"
+    prepared = c._prepare_pieces("journal", Path("SR-999.md"), text, "SR-999.md", c.load_patterns(PATTERNS))
+    assert all(item[3]["file_tags"] == ["wake:sr-999"] for item in prepared)
 
 
 def test_handle_from_header_and_id_not_from_other_sections(source):
@@ -475,8 +475,8 @@ def test_labeled_metadata_does_not_truncate_100_character_label(tmp_path):
 
 
 def test_custom_plan_heading_is_used(source, tmp_path):
-    path = source / "memory/mission_log/W60000.md"
-    path.write_text("# Log W60000\n\n## Dated Intentions\nVisit a paper lighthouse.\n\n## Other\nHidden body.", encoding="utf-8")
+    path = source / "memory/mission_log/SR-60000.md"
+    path.write_text("# Log SR-60000\n\n## Dated Intentions\nVisit a paper lighthouse.\n\n## Other\nHidden body.", encoding="utf-8")
     migrate(source)
     cfg = json.loads(CONFIG.read_text())
     cfg["plan_heading"] = r"(?im)^(#{1,6}) Dated Intentions\r?$"
@@ -484,7 +484,7 @@ def test_custom_plan_heading_is_used(source, tmp_path):
     config.write_text(json.dumps(cfg))
     result = c.read_wake_card(source, source / "naming.json", config_path=config)
     assert "Visit a paper lighthouse." in result["text"] and "Hidden body." not in result["text"]
-    assert "W60000 · Dated Intentions" in result["text"]
+    assert "SR-60000 · Dated Intentions" in result["text"]
 
 
 def test_legacy_recut_store_metrics(source, capsys):
@@ -517,7 +517,7 @@ def test_observations_at_first_byte_stay_in_header(source):
 
 
 
-@pytest.mark.parametrize("logical,filename", [("journal", "memory/mission_log/W137-2080-10-05.md"), ("residents", "memory/residents/paperfold.md")])
+@pytest.mark.parametrize("logical,filename", [("journal", "memory/mission_log/SR-137-2080-10-05.md"), ("residents", "memory/residents/paperfold.md")])
 def test_returning_key_reuses_its_original_id_and_history(source, tmp_path, logical, filename):
     migrate(source)
     before = filed(source, Path(filename).name)
@@ -544,8 +544,8 @@ def test_returning_key_reuses_its_original_id_and_history(source, tmp_path, logi
 
 @pytest.mark.parametrize("headings,keys", [("## !!!\r\nSymbol body.\r\n## \r\nEmpty body.", ["header", "-", ""]), ("## 🧵 Élan 你好!\r\nUnicode body.", ["header", "-élan-你好-"])])
 def test_keys_use_raw_heading_normalization_and_empty_key_is_stable(source, headings, keys):
-    path = source / "memory/mission_log/W61000.md"
-    path.write_bytes(("# Invented log W61000\r\n\r\n" + headings).encode())
+    path = source / "memory/mission_log/SR-61000.md"
+    path.write_bytes(("# Invented log SR-61000\r\n\r\n" + headings).encode())
     migrate(source)
     cards = filed(source, path.name)
     assert [card["origin"]["key"] for card in cards] == keys
@@ -575,15 +575,15 @@ def test_rendered_rule_notice_uses_a_callable_tool_signature():
 
 @pytest.mark.parametrize("separator", ["\u0085", "\u2028", "\u2029"])
 def test_unicode_separators_are_text_not_jsonl_record_boundaries(source, tmp_path, separator):
-    path = source / "memory/mission_log/W62000.md"
-    text = "# Invented log W62000\r\n\r\n## Other\r\nUnicode café" + separator + "続き without final newline"
+    path = source / "memory/mission_log/SR-62000.md"
+    text = "# Invented log SR-62000\r\n\r\n## Other\r\nUnicode café" + separator + "続き without final newline"
     path.write_bytes(text.encode())
     migrate(source)
     cards = filed(source, path.name)
     card = next(card for card in cards if separator in card["text"])
     read = c.read_card(source / "memory", card["id"], history=True)
     assert read["card"]["text"] == card["text"] and read["history"] == [card]
-    result = c.recall(source / "memory", tags=["wake:w62000"], config_path=CONFIG)
+    result = c.recall(source / "memory", tags=["wake:sr-62000"], config_path=CONFIG)
     assert card in result["cards"]
     assert len(c.read_wake_card(source, source / "naming.json", config_path=CONFIG)["sections"]) == 7
     before = store(source).cards_path.read_bytes()
@@ -603,7 +603,7 @@ def test_text_recall_accepts_legacy_null_titles(source):
 
 
 
-@pytest.mark.parametrize("logical,filename,role", [("journal", "memory/mission_log/W63000.md", "history"), ("residents", "memory/residents/empty.md", "current")])
+@pytest.mark.parametrize("logical,filename,role", [("journal", "memory/mission_log/SR-63000.md", "history"), ("residents", "memory/residents/empty.md", "current")])
 def test_empty_source_is_one_lossless_header_and_recut_noop(source, tmp_path, logical, filename, role):
     path = source / filename
     path.write_bytes(b"")

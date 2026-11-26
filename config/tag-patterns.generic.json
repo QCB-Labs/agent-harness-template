@@ -3,7 +3,7 @@
   "patterns": [
     {
       "group": 1,
-      "regex": "\\b(W\\d{3,})\\b",
+      "regex": "\\b({wake_prefix}\\d{3,})\\b",
       "tag": "wake:{value}"
     },
     {

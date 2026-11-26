@@ -265,7 +265,7 @@ def test_write_journal_creates_wake_numbered_file_and_cleans_recovery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(harness_mcp, "_utc_now", lambda: FIXED_NOW)
-    # Seed budget with a wake_count so the next journal is W001
+    # Seed budget with a wake_count so the next journal is SR-001
     import json
     budget_path = isolated_repo / "budget.json"
     budget_path.write_text(json.dumps({"wake_count": 0}), encoding="utf-8")
