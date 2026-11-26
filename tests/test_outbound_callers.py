@@ -131,7 +131,7 @@ def test_private_tool_transitions_and_records_receipt(sandbox, module_name, name
         "conversation_id": CONVERSATION, "private_used_utc": NOW.isoformat()}
     first = receipts[0].read_bytes()
     fn(**_arguments(fn), _conversationId=CONVERSATION)
-    assert len(list(phase._private_use_root().rglob("*.json"))) == 2
+    assert len(list(phase._private_use_root().rglob("*.json"))) == 1
     assert receipts[0].read_bytes() == first
     assert phase.unknown_email_status(CONVERSATION)["available"] is False
 

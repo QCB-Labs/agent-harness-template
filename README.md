@@ -64,7 +64,7 @@ See [CREDITS.md](CREDITS.md).
 
 ## Licence
 
-Copyright Quality Control Bureau (https://github.com/qualitycontrolbureau).
+Copyright Quality Control Bureau (https://github.com/QCB-Labs).
 
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0). You may use,
 change and share it, commercially too. If you change it and run it, including
