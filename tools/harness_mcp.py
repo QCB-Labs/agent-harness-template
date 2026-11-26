@@ -13,7 +13,9 @@ import re
 import shutil
 import smtplib
 import sys
+import tempfile
 import threading
+import time
 from typing import Annotated
 
 
@@ -951,12 +953,41 @@ def _load_budget() -> dict[str, object]:
         return _default_budget()
 
 
+def _journal_budget() -> dict[str, object]:
+    try:
+        data = json.loads((REPO / "budget.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _default_budget()
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise ValueError("budget.json is unreadable or malformed; journal not written") from exc
+    count = data.get("wake_count", 0) if isinstance(data, dict) else None
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+        raise ValueError("budget.json has an invalid wake count; journal not written")
+    return data
+
+
 def _save_budget(data: dict[str, object]) -> None:
     data["updated_at"] = _utc_now().isoformat()
     budget_path = REPO / "budget.json"
-    budget_path.write_text(
-        json.dumps(data, indent=2) + "\n", encoding="utf-8"
-    )
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8",
+                                         dir=budget_path.parent, delete=False) as handle:
+            temporary = Path(handle.name)
+            handle.write(json.dumps(data, indent=2) + "\n")
+        # On Windows a reader holding the file open makes the swap fail for a
+        # moment; retry briefly rather than leave the count behind its log.
+        for attempt in range(40):
+            try:
+                os.replace(temporary, budget_path)
+                break
+            except PermissionError:
+                if attempt == 39:
+                    raise
+                time.sleep(0.05)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
 
 
 RELIABILITY_CHECK_FAILED = " Reliability check did not run; saved as written."
@@ -1055,6 +1086,7 @@ def update_last_seen(feed: str, last_id: int | str) -> str:
 @_bind_host_conversation_id
 def write_journal(content: str, conversation_id: HostConversationId = None) -> str:
     """Write a crash-safe journal entry with wake number and return its path."""
+    _journal_budget()
     now = _utc_now()
     journal_dir = REPO / names.rel("journal")
 
@@ -1081,7 +1113,7 @@ def write_journal(content: str, conversation_id: HostConversationId = None) -> s
     # The count is only persisted after the entry is safely on disk, so a
     # failed write never burns a number.
     with stop_marker.stop_lock(REPO):
-        budget = _load_budget()
+        budget = _journal_budget()
         wake_count = budget.get("wake_count", 0) + 1
         base_name = f"{names.wake_id(wake_count)}-{now.strftime('%Y-%m-%d')}"
         journal_path = month_dir / f"{base_name}.md"

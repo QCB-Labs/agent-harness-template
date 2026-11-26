@@ -73,6 +73,20 @@ def _private_use_root() -> Path:
 
 
 def _record_private_use(conversation_id: str) -> datetime:
+    from tools import stop_marker
+
+    with stop_marker.stop_lock(REPO_ROOT):
+        used_at = _write_private_use(conversation_id)
+        try:
+            _prune_private_use()
+        except (PhaseError, OSError):
+            # Pruning is housekeeping. A receipt it can't read still blocks
+            # unknown email, as before; it must not also block this read.
+            pass
+        return used_at
+
+
+def _write_private_use(conversation_id: str) -> datetime:
     used_at = _now()
     directory = _private_use_root() / conversation_id
     directory.mkdir(parents=True, exist_ok=True)
@@ -92,6 +106,29 @@ def _record_private_use(conversation_id: str) -> datetime:
     finally:
         temporary.unlink(missing_ok=True)
     return used_at
+
+
+def _prune_private_use() -> None:
+    # Validate everything before removing anything. A permanent latest receipt
+    # keeps the conversation blocked even after its timestamp files expire.
+    receipts = _read_private_use_receipts()
+    latest = {}
+    for conversation_id, used_at in receipts:
+        latest[conversation_id] = max(latest.get(conversation_id, used_at), used_at)
+    for conversation_id, used_at in latest.items():
+        directory = _private_use_root() / conversation_id
+        target = directory / "latest.json"
+        temporary = directory / f".{uuid.uuid4().hex}.tmp"
+        try:
+            temporary.write_text(json.dumps({"conversation_id": conversation_id,
+                                            "private_used_utc": used_at.isoformat()}) + "\n",
+                                 encoding="utf-8")
+            os.replace(temporary, target)
+        finally:
+            temporary.unlink(missing_ok=True)
+        for path in directory.glob("*.json"):
+            if path != target:
+                path.unlink(missing_ok=True)
 
 
 def _read_private_use_receipts() -> list[tuple[str, datetime]]:
@@ -306,7 +343,7 @@ def enters_private(fn):
 
     The AGY invocation hook supplies ``_conversationId``. Missing or malformed
     identity fails closed before the decorated function can return private
-    context. Every call writes an immutable per-conversation receipt, even if
+    context. Every call updates a permanent per-conversation receipt, even if
     the coarse phase is already private.
     """
     @functools.wraps(fn)

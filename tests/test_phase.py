@@ -121,7 +121,7 @@ def test_enters_private_is_idempotent(isolated_phase: Path) -> None:
     receipts = list((
         isolated_phase / names.memory("private") / "private-use" / CONVERSATION_A
     ).glob("*.json"))
-    assert len(receipts) == 2
+    assert len(receipts) == 1
 
 
 def test_decorators_preserve_signature(isolated_phase: Path) -> None:

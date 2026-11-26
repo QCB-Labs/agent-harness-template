@@ -31,12 +31,12 @@ def repo(tmp_path, monkeypatch):
     git(tmp_path, 'config', 'user.name', 'Test Agent')
     git(tmp_path, 'config', 'user.email', 'test@example.com')
     git(tmp_path, 'config', 'core.autocrlf', 'false')
-    for name in ('changed.txt', 'deleted.txt', 'other.txt', 'unchanged.txt'):
+    for name in ('DIRECTIVES.md', 'COMPLETED-DIRECTIVES.md', 'other.txt', 'PERSONNEL-FILE.md'):
         (tmp_path / name).write_text('initial\n')
     (tmp_path / '.gitignore').write_text(fixture_name('ignored.txt\nrecords/private/\n'))
     git(tmp_path, 'add', '--', '.')
     git(tmp_path, 'commit', '-m', 'Initial')
-    (tmp_path / 'changed.txt').write_text('changed\n')
+    (tmp_path / 'DIRECTIVES.md').write_text('changed\n')
     (tmp_path / 'budget.json').write_text('{"wake_count":150}\n')
     monkeypatch.setattr(h, 'REPO', tmp_path)
     monkeypatch.setattr(release, 'REPO_ROOT', tmp_path)
@@ -62,11 +62,11 @@ def snapshot(root):
 
 
 def test_modified_new_deleted_and_head(repo):
-    (repo / 'nested').mkdir()
-    (repo / 'nested/new.txt').write_text('new\n')
-    (repo / 'deleted.txt').unlink()
+    (repo / 'records/nested').mkdir(parents=True)
+    (repo / 'records/nested/new.txt').write_text('new\n')
+    (repo / 'COMPLETED-DIRECTIVES.md').unlink()
     (repo / 'other.txt').write_text('leave outside\n')
-    result = h.commit_wake(files=['changed.txt', 'nested/new.txt', 'deleted.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md', 'records/nested/new.txt', 'COMPLETED-DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED', result
     assert result['message'] == fixture_name('SR-0150: Record wake')
     assert result['commit'] == git(repo, 'rev-parse', '--short', 'HEAD').decode().strip()
@@ -78,9 +78,9 @@ def test_modified_new_deleted_and_head(repo):
 
 @pytest.mark.parametrize('files,summary,rule', [
     ([], 'Summary', 'non-empty'),
-    ('changed.txt', 'Summary', 'list'),
+    ('DIRECTIVES.md', 'Summary', 'list'),
     ([1], 'Summary', 'strings'),
-    (['changed.txt'], '  ', 'blank'),
+    (['DIRECTIVES.md'], '  ', 'blank'),
     (['/absolute.txt'], 'Summary', 'relative'),
     (['C:/absolute.txt'], 'Summary', 'relative'),
     (['-bad.txt'], 'Summary', 'dash'),
@@ -89,12 +89,12 @@ def test_modified_new_deleted_and_head(repo):
     (['[a].txt'], 'Summary', 'file-search'),
     (['.'], 'Summary', 'dot'),
     (['sub/../changed.txt'], 'Summary', 'parent'),
-    (['..\\changed.txt'], 'Summary', 'parent'),
-    (['unchanged.txt'], 'Summary', 'changed'),
-    (['missing.txt'], 'Summary', 'changed'),
-    (['changed.txt'], 'two\nlines', 'one line'),
-    (['changed.txt'], 'two\rlines', 'one line'),
-    (['changed.txt'], fixture_name('SR-0150: wrong'), 'wake number'),
+    (['..\\DIRECTIVES.md'], 'Summary', 'parent'),
+    (['PERSONNEL-FILE.md'], 'Summary', 'changed'),
+    (['records/missing.txt'], 'Summary', 'changed'),
+    (['DIRECTIVES.md'], 'two\nlines', 'one line'),
+    (['DIRECTIVES.md'], 'two\rlines', 'one line'),
+    (['DIRECTIVES.md'], fixture_name('SR-0150: wrong'), 'wake number'),
 ])
 def test_refusals_preserve_every_byte(repo, files, summary, rule):
     before = snapshot(repo)
@@ -139,11 +139,11 @@ def test_private_tracked_file(repo):
 
 
 def test_folder(repo):
-    (repo / 'changed.txt').unlink()
-    (repo / 'changed.txt').mkdir()
-    (repo / 'changed.txt/file.txt').write_text('new')
+    (repo / 'DIRECTIVES.md').unlink()
+    (repo / 'DIRECTIVES.md').mkdir()
+    (repo / 'DIRECTIVES.md/file.txt').write_text('new')
     before = snapshot(repo)
-    result = h.commit_wake(files=['changed.txt'], summary='Summary')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')
     assert result['status'] == 'REFUSED' and 'names a folder' in result['reason']
     assert snapshot(repo) == before
 
@@ -158,7 +158,7 @@ def test_hook_runs_in_a_plain_git_environment(repo, monkeypatch):
                'test -z "$GIT_LITERAL_PATHSPECS" || exit 1\n'
                'test -z "$AGENT_HARNESS_REPO" || exit 1\n'
                'exit 0')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED', result
 
 
@@ -166,7 +166,7 @@ def test_unnamed_staged_file(repo):
     (repo / 'other.txt').write_text('other')
     git(repo, 'add', '--', 'other.txt')
     before = snapshot(repo)
-    result = h.commit_wake(files=['changed.txt'], summary='Summary')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')
     assert result['status'] == 'REFUSED' and 'other.txt' in result['reason'] and 'staged' in result['reason']
     assert snapshot(repo) == before
 
@@ -174,11 +174,11 @@ def test_unnamed_staged_file(repo):
 def test_hook_refusal_is_last_line_and_unstages(repo):
     hook(repo, "echo first\necho second >&2\nprintf '%s\\n\\n' '" + 'x' * 250 + "'\nexit 1")
     head = git(repo, 'rev-parse', 'HEAD')
-    result = h.commit_wake(files=['changed.txt'], summary='Summary')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')
     assert result == {'status': 'HOOK_REFUSED', 'hook_line': 'x' * 200}
     assert git(repo, 'diff', '--cached') == b''
     assert git(repo, 'rev-parse', 'HEAD') == head
-    assert (repo / 'changed.txt').read_text() == 'changed\n'
+    assert (repo / 'DIRECTIVES.md').read_text() == 'changed\n'
     assert h.commit_status() == result
     sentence = 'The previous wake commit was refused by its hook.'
     assert sentence in h.wake_status()
@@ -192,7 +192,7 @@ async def test_slow_hook_and_second_call(repo):
     (config / 'harness.json').write_text('{"commit_wait_seconds":0.01}')
     hook(repo, 'echo ready > .git/commit-test-ready\nsleep 3\nexit 0')
     started = time.monotonic()
-    response = await h.mcp.call_tool('commit_wake', {'files': ['changed.txt'], 'summary': 'Summary'})
+    response = await h.mcp.call_tool('commit_wake', {'files': ['DIRECTIVES.md'], 'summary': 'Summary'})
     returned_seconds = time.monotonic() - started
     assert 'STILL_RUNNING' in str(response)
     assert h.commit_status() == {'status': 'STILL_RUNNING'}
@@ -218,7 +218,7 @@ async def test_slow_hook_and_second_call(repo):
 def test_stop_marker(repo):
     (repo / 'STOP.md').write_text('Standing')
     before = snapshot(repo)
-    assert h.commit_wake(files=['changed.txt'], summary='Summary')['status'] == 'REFUSED'
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')['status'] == 'REFUSED'
     assert h.commit_status() == {'status': 'NONE'}
     assert snapshot(repo) == before
 
@@ -226,40 +226,40 @@ def test_stop_marker(repo):
 def test_log_first_and_since_previous_call(repo):
     (repo / 'budget.json').write_text('{"wake_count":0}')
     before = snapshot(repo)
-    assert 'report comes first' in h.commit_wake(files=['changed.txt'], summary='Summary')['reason']
+    assert 'report comes first' in h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')['reason']
     assert snapshot(repo) == before
     # A wake opens (count 149), writes its log (150) and commits.
     commit.notice(repo, 'conversation-a', 149)
     (repo / 'budget.json').write_text('{"wake_count":150}')
-    assert h.commit_wake(files=['changed.txt'], summary='Summary')['status'] == 'COMMITTED'
-    assert h.commit_wake(files=['changed.txt'], summary='Summary') == {'status': 'NOTHING_TO_COMMIT', 'files': ['changed.txt']}
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')['status'] == 'COMMITTED'
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Summary') == {'status': 'NOTHING_TO_COMMIT', 'files': ['DIRECTIVES.md']}
     # The same wake may commit again: a retry or a forgotten file, also
     # after a second status call and after the harness restarts.
-    (repo / 'changed.txt').write_text('another change')
-    assert h.commit_wake(files=['changed.txt'], summary='Forgotten')['message'] == fixture_name('SR-0150: Forgotten')
+    (repo / 'DIRECTIVES.md').write_text('another change')
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Forgotten')['message'] == fixture_name('SR-0150: Forgotten')
     commit.notice(repo, 'conversation-a', 150)
     commit._states.pop(str(repo.resolve()), None)
-    (repo / 'changed.txt').write_text('a third change')
-    assert h.commit_wake(files=['changed.txt'], summary='Again')['message'] == fixture_name('SR-0150: Again')
+    (repo / 'DIRECTIVES.md').write_text('a third change')
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Again')['message'] == fixture_name('SR-0150: Again')
     # The next wake is a new conversation; it must write its log first.
     commit.notice(repo, 'conversation-b', 150)
-    (repo / 'changed.txt').write_text('a fourth change')
+    (repo / 'DIRECTIVES.md').write_text('a fourth change')
     before = snapshot(repo)
-    assert 'report comes first' in h.commit_wake(files=['changed.txt'], summary='Summary')['reason']
+    assert 'report comes first' in h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')['reason']
     assert snapshot(repo) == before
     (repo / 'budget.json').write_text('{"wake_count":151}')
-    assert h.commit_wake(files=['changed.txt'], summary='Next')['message'] == fixture_name('SR-0151: Next')
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Next')['message'] == fixture_name('SR-0151: Next')
     # A wake that wrote its log and never committed does not lend its number
     # to the wake after it.
     (repo / 'budget.json').write_text('{"wake_count":152}')
     commit.notice(repo, 'conversation-c', 152)
-    (repo / 'changed.txt').write_text('a fifth change')
-    assert 'report comes first' in h.commit_wake(files=['changed.txt'], summary='Summary')['reason']
+    (repo / 'DIRECTIVES.md').write_text('a fifth change')
+    assert 'report comes first' in h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')['reason']
     # A conversation that cannot be named counts as a new wake.
     commit.notice(repo, None, 152)
-    assert 'report comes first' in h.commit_wake(files=['changed.txt'], summary='Summary')['reason']
+    assert 'report comes first' in h.commit_wake(files=['DIRECTIVES.md'], summary='Summary')['reason']
     (repo / 'budget.json').write_text('{"wake_count":153}')
-    assert h.commit_wake(files=['changed.txt'], summary='Later')['message'] == fixture_name('SR-0153: Later')
+    assert h.commit_wake(files=['DIRECTIVES.md'], summary='Later')['message'] == fixture_name('SR-0153: Later')
 
 
 def test_persisted_result_and_unfinished_notice(repo):
@@ -274,7 +274,7 @@ def test_persisted_result_and_unfinished_notice(repo):
 
 @pytest.mark.asyncio
 async def test_fastmcp_and_help(repo):
-    result = await h.mcp.call_tool('commit_wake', {'files':['changed.txt'], 'summary':'Summary'})
+    result = await h.mcp.call_tool('commit_wake', {'files':['DIRECTIVES.md'], 'summary':'Summary'})
     assert 'COMMITTED' in str(result)
     assert 'NONE' not in str(await h.mcp.call_tool('commit_status', {}))
     example = h.help(tool='commit_wake').split('Example: ')[1]
@@ -321,22 +321,22 @@ def test_a_wrong_name_lists_the_files_that_changed(repo):
     result = h.commit_wake(files=[fixture_name('records/threads/a-short-name-in-full.md')], summary='Record wake')
     assert result['status'] == 'REFUSED'
     assert result['reason'] == (fixture_name("'records/threads/a-short-name-in-full.md' is not reported as a changed "
-                                "file by git. Changed files: changed.txt, records/threads/a-short-na.md."))
+                                "file by git. Changed files: DIRECTIVES.md, records/threads/a-short-na.md."))
     assert 'secret' not in result['reason'] and 'budget.json' not in result['reason']
 
 
 def test_a_long_list_of_changes_is_cut_with_a_count(repo):
     for n in range(35):
         (repo / f'new{n:02d}.txt').write_text('x\n')
-    reason = h.commit_wake(files=['absent.txt'], summary='Record wake')['reason']
+    reason = h.commit_wake(files=['records/absent.txt'], summary='Record wake')['reason']
     assert reason.endswith(', and 6 more.')
     assert reason.count(', ') == 30
 
 
 def test_nothing_else_changed_says_so(repo):
-    git(repo, 'add', '--', 'changed.txt', 'budget.json')
+    git(repo, 'add', '--', 'DIRECTIVES.md', 'budget.json')
     git(repo, 'commit', '-m', 'clean up')
-    reason = h.commit_wake(files=['absent.txt'], summary='Record wake')['reason']
+    reason = h.commit_wake(files=['records/absent.txt'], summary='Record wake')['reason']
     assert reason.endswith('No other files have changed.')
 
 
@@ -344,37 +344,37 @@ def test_harness_kept_files_go_with_his_commit(repo):
     (repo / fixture_name('records/cards')).mkdir(parents=True)
     (repo / fixture_name('records/cards/index.json')).write_text('{}\n')
     (repo / fixture_name('records/seen.json')).write_text('{}\n')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED'
-    assert result['files'] == ['changed.txt']
+    assert result['files'] == ['DIRECTIVES.md']
     assert result['harness_files'] == ['budget.json', fixture_name('records/cards/index.json'), fixture_name('records/seen.json')]
-    assert _committed(repo) == {'changed.txt', 'budget.json', fixture_name('records/cards/index.json'), fixture_name('records/seen.json')}
+    assert _committed(repo) == {'DIRECTIVES.md', 'budget.json', fixture_name('records/cards/index.json'), fixture_name('records/seen.json')}
 
 
 def test_unchanged_harness_files_are_not_reported(repo):
     git(repo, 'add', '--', 'budget.json')
     git(repo, 'commit', '-m', 'budget')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED' and 'harness_files' not in result
-    assert _committed(repo) == {'changed.txt'}
+    assert _committed(repo) == {'DIRECTIVES.md'}
 
 
 def test_naming_a_harness_file_himself_still_works(repo):
-    result = h.commit_wake(files=['changed.txt', 'budget.json'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md', 'budget.json'], summary='Record wake')
     assert result['status'] == 'COMMITTED'
-    assert result['files'] == ['changed.txt', 'budget.json'] and 'harness_files' not in result
+    assert result['files'] == ['DIRECTIVES.md', 'budget.json'] and 'harness_files' not in result
 
 
 def test_a_private_harness_file_is_never_added(repo, monkeypatch):
     monkeypatch.setattr(release, 'is_private', lambda name: name == 'budget.json')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED' and 'harness_files' not in result
     assert 'budget.json' not in _committed(repo)
 
 
 def test_a_failed_commit_unstages_the_harness_files_too(repo):
     hook(repo, 'exit 1')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     deadline = time.monotonic() + 10
     while result['status'] == 'STILL_RUNNING' and time.monotonic() < deadline:
         time.sleep(.05)
@@ -388,8 +388,8 @@ def test_every_call_writes_a_timing_line_without_names(repo, monkeypatch):
     # so the test reads what was written without racing that thread.
     caught = []
     monkeypatch.setattr(commit, '_write_timing', lambda root, line: caught.append(line))
-    h.commit_wake(files=['absent.txt'], summary='Secret summary words')
-    h.commit_wake(files=['changed.txt'], summary='Secret summary words')
+    h.commit_wake(files=['records/absent.txt'], summary='Secret summary words')
+    h.commit_wake(files=['DIRECTIVES.md'], summary='Secret summary words')
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline and (commit._state(repo)['running']
                                            or not any('call=commit_worker' in line for line in caught)):
@@ -404,7 +404,7 @@ def test_every_call_writes_a_timing_line_without_names(repo, monkeypatch):
     assert any('call=commit_wake' in line and f'id={call_id}' in line for line in lines)
     assert any('call=commit_worker' in line and 'commit_and_hooks=' in line and 'status=COMMITTED' in line
                for line in lines)
-    assert 'changed.txt' not in text and 'Secret' not in text and 'absent' not in text
+    assert 'DIRECTIVES.md' not in text and 'Secret' not in text and 'absent' not in text
 
 
 def test_the_timing_writer_appends_to_the_operator_log(tmp_path, monkeypatch):
@@ -419,13 +419,13 @@ def test_an_unwritable_timing_log_changes_nothing(repo, tmp_path, monkeypatch):
     blocker = tmp_path.parent / (tmp_path.name + '-blocked')
     blocker.write_text('a file where the folder should be')
     monkeypatch.setattr(commit.paths, 'operator_log_dir', lambda: blocker / 'logs')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] in ('COMMITTED', 'STILL_RUNNING')
 
 
 def test_no_timing_log_inside_the_repository(repo, monkeypatch):
     monkeypatch.setattr(commit.paths, 'operator_log_dir', lambda: repo / 'logs')
-    h.commit_wake(files=['changed.txt'], summary='Record wake')
+    h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     deadline = time.monotonic() + 10
     while commit._state(repo)['running'] and time.monotonic() < deadline:
         time.sleep(.01)
@@ -443,9 +443,9 @@ def test_a_folder_in_place_of_a_harness_file_is_never_swept_in(repo, monkeypatch
     (repo / 'budget.json/private.txt').write_text('private\n')
     monkeypatch.setattr(release, 'is_private', lambda name: name.endswith('private.txt'))
     monkeypatch.setattr(h, '_load_budget', lambda: {'wake_count': 150})
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED' and 'harness_files' not in result
-    assert _committed(repo) == {'changed.txt'}
+    assert _committed(repo) == {'DIRECTIVES.md'}
 
 
 def test_a_deleted_harness_file_still_goes_along(repo, monkeypatch):
@@ -455,7 +455,7 @@ def test_a_deleted_harness_file_still_goes_along(repo, monkeypatch):
     git(repo, 'commit', '-m', 'seen')
     (repo / fixture_name('records/seen.json')).unlink()
     monkeypatch.setattr(h, '_load_budget', lambda: {'wake_count': 150})
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED' and result['harness_files'] == [fixture_name('records/seen.json')]
 
 
@@ -464,7 +464,7 @@ def test_a_slow_timing_log_never_holds_up_the_call(repo, monkeypatch):
     gate = _threading.Event()
     monkeypatch.setattr(commit, '_write_timing', lambda root, line: gate.wait(30))
     started = time.monotonic()
-    result = h.commit_wake(files=['absent.txt'], summary='Record wake')
+    result = h.commit_wake(files=['records/absent.txt'], summary='Record wake')
     assert result['status'] == 'REFUSED' and time.monotonic() - started < 5
     gate.set()
 
@@ -485,7 +485,7 @@ def test_git_never_inherits_the_servers_stdin(repo, monkeypatch):
 def test_each_status_check_leaves_a_git_trace_outside_the_repository(repo, operator_logs, monkeypatch):
     caught = []
     monkeypatch.setattr(commit, '_write_timing', lambda root, line: caught.append(line))
-    h.commit_wake(files=['absent.txt'], summary='Record wake')
+    h.commit_wake(files=['records/absent.txt'], summary='Record wake')
     wait_for(caught)
     call_id = caught[0].split('id=')[1].split()[0]
     trace = operator_logs / 'git-trace' / f'status-{call_id}.txt'
@@ -495,7 +495,7 @@ def test_each_status_check_leaves_a_git_trace_outside_the_repository(repo, opera
 
 def test_no_git_trace_inside_the_repository(repo, monkeypatch):
     monkeypatch.setattr(commit.paths, 'operator_log_dir', lambda: repo / 'logs')
-    result = h.commit_wake(files=['absent.txt'], summary='Record wake')
+    result = h.commit_wake(files=['records/absent.txt'], summary='Record wake')
     assert result['status'] == 'REFUSED'
     assert not (repo / 'logs').exists()
 
@@ -514,7 +514,7 @@ def test_the_timing_line_names_git_variables_without_values(repo, monkeypatch):
     caught = []
     monkeypatch.setattr(commit, '_write_timing', lambda root, line: caught.append(line))
     monkeypatch.setenv('GIT_EXAMPLE_SETTING', 'secret-value-here')
-    h.commit_wake(files=['absent.txt'], summary='Record wake')
+    h.commit_wake(files=['records/absent.txt'], summary='Record wake')
     wait_for(caught)
     assert 'GIT_EXAMPLE_SETTING' in caught[0] and 'secret-value-here' not in caught[0]
 
@@ -541,7 +541,7 @@ def test_the_trace_never_copies_variable_or_config_values(repo, monkeypatch):
         seen.append(extra)
         return real(root, arguments, extra)
     monkeypatch.setattr(commit, '_run', spy)
-    h.commit_wake(files=['absent.txt'], summary='Record wake')
+    h.commit_wake(files=['records/absent.txt'], summary='Record wake')
     assert seen[0]['GIT_TRACE2_ENV_VARS'] == '' and seen[0]['GIT_TRACE2_CONFIG_PARAMS'] == ''
 
 
@@ -559,9 +559,9 @@ def test_status_warning_does_not_hide_first_changed_file(repo, monkeypatch):
         return result
 
     monkeypatch.setattr(commit.subprocess, "run", warning)
-    result = h.commit_wake(files=["changed.txt"], summary="Store fixture change")
+    result = h.commit_wake(files=["DIRECTIVES.md"], summary="Store fixture change")
     assert result["status"] == "COMMITTED", result
-    assert "changed.txt" in result["files"]
+    assert "DIRECTIVES.md" in result["files"]
 
 
 # --- Files a wake left behind ---------------------------------------------
@@ -570,7 +570,7 @@ def test_this_wakes_log_goes_along_unnamed(repo):
     (repo / (names.rel("journal") + '/2026-10')).mkdir(parents=True)
     (repo / (names.rel("journal") + f'/2026-10/{names.wake_id(150)}-2026-10-20.md')).write_text('log\n')
     (repo / (names.rel("journal") + f'/2026-10/{names.wake_id(149)}-2026-10-19.md')).write_text('older\n')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED'
     assert (names.rel("journal") + f'/2026-10/{names.wake_id(150)}-2026-10-20.md') in result['harness_files']
     assert (names.rel("journal") + f'/2026-10/{names.wake_id(150)}-2026-10-20.md') in _committed(repo)
@@ -584,7 +584,7 @@ def test_his_unnamed_files_are_reported_not_swept_in(repo):
     (repo / names.memory('private')).mkdir(parents=True)
     (repo / names.memory('private/secret.txt')).write_text('private\n')
     (repo / 'other.txt').write_text('not his\n')
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED'
     assert result['left_uncommitted'] == sorted([names.rel('goals_archive'), names.memory('goals/new-goal.md')])
     assert ', '.join(sorted([names.rel('goals_archive'), names.memory('goals/new-goal.md')])) in result['note']
@@ -596,7 +596,7 @@ def test_his_unnamed_files_are_reported_not_swept_in(repo):
 
 
 def test_nothing_left_means_no_note(repo):
-    result = h.commit_wake(files=['changed.txt'], summary='Record wake')
+    result = h.commit_wake(files=['DIRECTIVES.md'], summary='Record wake')
     assert result['status'] == 'COMMITTED'
     assert 'left_uncommitted' not in result and 'note' not in result
 
@@ -714,10 +714,10 @@ def test_reverted_operator_code_still_blocks(push_repo):
 
 def test_rename_out_of_code_is_not_memory_only(push_repo):
     (push_repo / names.dir_name('memory')).mkdir()
-    git(push_repo, 'mv', 'unchanged.txt', names.memory('renamed.txt'))
+    git(push_repo, 'mv', 'PERSONNEL-FILE.md', names.memory('renamed.txt'))
     git(push_repo, 'commit', '-m', 'Move into memory')
     result = wake_memory(push_repo)
-    assert result['push'] == 'SKIPPED' and 'unchanged.txt' in result['push_reason']
+    assert result['push'] == 'SKIPPED' and 'PERSONNEL-FILE.md' in result['push_reason']
 
 
 def test_push_sends_no_tags_even_with_follow_tags(push_repo):

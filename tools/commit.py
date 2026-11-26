@@ -400,6 +400,12 @@ def _commit_wake(root: Path, files: list[str], summary: str, load_budget, lock: 
             name = path.as_posix()
             if name not in names:
                 names.append(name)
+        # Only the agent's own files: never the protocol, the code or the repo's settings.
+        refused = [name for name in names
+                   if name not in commit_scope.MEMORY_FILES | {naming.rel("identity")}
+                   and not name.startswith(commit_scope.MEMORY_PREFIXES)]
+        if refused:
+            return refuse("Not wake files: " + ", ".join(refused))
         timing["env"] = _git_names()
         mark = time.monotonic()
         trace = _trace_target(root, timing["id"])
