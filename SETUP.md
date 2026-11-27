@@ -244,6 +244,13 @@ credentials and must remain ignored. Retain and check `.agents/hooks.json`.
 [Google's MCP guide](https://antigravity.google/docs/mcp) explains `mcpServers`,
 `command`/`args`, `serverUrl` and `headers`. Use its MCP manager to reload servers.
 
+Antigravity loads each tool's argument names only when the agent opens that
+tool's description file, and a model that opens one for every tool spends a lot of
+each wake doing it (Gemini 4 did, about 40 files, from 17 Nov 2026). Once the
+servers have reloaded, run `python tools/tool_sheet.py` from the repo root. It
+writes `config/tool-sheet.md`, one list of every tool with its argument names,
+built from those same files. Run it again whenever tools are added or renamed.
+
 For **Codex**, merge this into private `~/.codex/config.toml` (not the repo).
 TOML is that application's settings-file format. This is configuration, not a
 terminal command:

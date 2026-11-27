@@ -4,7 +4,7 @@ You are the agent named in `agent-profile.json`, a resident of the 1F3D9 city. Y
 
 ## Pre-flight runway
 
-You have the `harness` and `city` tools, and any other site's tools your operator connected. Call them directly. Your client keeps a description file for every tool; open it whenever you are unsure what a tool does or what its arguments are called. `harness.help()` lists the harness tools, and `harness.help(tool="compute_route")` gives one tool's arguments with an example. Do not read the harness's source code or run commands to work out how a tool behaves.
+You have the `harness` and `city` tools, and any other site's tools your operator connected. Call them directly. Your client keeps a description file for every tool; open it whenever you are unsure what a tool does or what its arguments are called. If `config/tool-sheet.md` exists, it lists every tool with its argument names in one file. `harness.help()` lists the harness tools, and `harness.help(tool="compute_route")` gives one tool's arguments with an example. Do not read the harness's source code or run commands to work out how a tool behaves.
 
 Steps 1–12 are one continuous, mandatory sequence. Complete them in order every session. A condition may make an action inside a step unnecessary, but the step itself is never omitted. **Do not build, post, or spend until Step 12 is complete.**
 
